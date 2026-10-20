@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark light" />
 <meta name="theme-color" content="#07080c" />
-<title>Scribe v0.2.1 — Gemini transcription studio</title>
+<title>Scribe v0.2.2 — Gemini transcription studio</title>
 <meta name="description" content="A fast, elegant, client-side speech-to-text studio powered by Google AI Studio (Gemini), with AI post-processing." />
 
 <!--
   ╔══════════════════════════════════════════════════════════════════════════╗
-  ║  SCRIBE v0.2.1 — Gemini speech studio                                     ║
+  ║  SCRIBE v0.2.2 — Gemini speech studio                                     ║
   ║                                                                          ║
   ║  HOW TO USE                                                              ║
   ║  1. Get a free Google AI Studio key:                                      ║
@@ -23,20 +23,9 @@
   ║                                                                          ║
   ║  LIMITS (Gemini API)                                                      ║
   ║  • Audio < 12 MB is sent inline (base64) in a single generateContent      ║
-  ║    call. Larger files are uploaded to the Gemini Files API, which keeps   ║
-  ║    them for 48 hours and supports up to 2 GB. This UI caps at 100 MB.     ║
+  ║    call. Larger files are uploaded to the Gemini Files API.               ║
   ║  • Supported audio: WAV, MP3, AIFF, AAC, OGG, FLAC; video: MP4, WEBM.     ║
-  ║  • Free tier is rate-limited (RPM + RPD). Pro is much stricter than Flash.║
-  ║                                                                          ║
-  ║  BROWSERS                                                                 ║
-  ║  Chrome, Edge, Firefox, Safari 14.1+. Recording format varies by browser  ║
-  ║  (WebM/Opus on Chrome/Firefox, MP4/AAC on Safari).                        ║
-  ║                                                                          ║
-  ║  CORS NOTE                                                                ║
-  ║  Gemini’s REST endpoints allow browser calls, but corporate proxies may   ║
-  ║  strip CORS. If you see a network error, route through your own trusted   ║
-  ║  proxy via “Advanced options → API base URL” (your proxy will see the     ║
-  ║  key, so only use infrastructure you control).                            ║
+  ║  • Free tier is rate-limited (RPM + RPD).                                 ║
   ╚══════════════════════════════════════════════════════════════════════════╝
 -->
 
@@ -987,7 +976,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <div class="header-actions">
       <span class="model-pill">
         <span class="status-dot is-on" aria-hidden="true"></span>
-        <span id="enginePillText">Gemini Flash</span>
+        <span id="enginePillText">Gemini Transcribe</span>
       </span>
       <button class="btn btn-ghost key-trigger" id="keyTrigger" type="button" aria-haspopup="dialog">
         <span class="status-dot" id="keyTriggerDot" aria-hidden="true"></span>
@@ -1011,18 +1000,18 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <div class="hero-copy reveal">
       <div class="eyebrow">
         <span class="eyebrow-dot" aria-hidden="true"></span>
-        Speech to text · Gemini API · v0.2.1
+        Speech to text · Gemini API · v0.2.2
       </div>
       <h1 id="heroTitle">Every word,<br><em>beautifully</em> transcribed.</h1>
       <p class="lede">
         Gemini-grade accuracy at lightning speed. Upload a recording or speak into your mic,
-        then refine the result with Gemini 2.5 — polish, summarize, or translate without
+        then refine the result with Gemini — polish, summarize, or translate without
         leaving the page.
       </p>
       <ul class="feature-row" aria-label="Highlights">
         <li>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
-          99+ languages
+          85+ languages
         </li>
         <li>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
@@ -1061,16 +1050,16 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <div class="control">
       <span class="control-label" id="transcriptionModelLabel">Transcription model</span>
       <div class="segmented" id="transcriptionModelControl" role="radiogroup" aria-labelledby="transcriptionModelLabel">
-        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-2.5-flash">
-          <span class="seg-title">Gemini Flash</span>
-          <span class="seg-sub">gemini-2.5-flash</span>
+        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-3.5-transcribe">
+          <span class="seg-title">Transcribe</span>
+          <span class="seg-sub">gemini-3.5-transcribe</span>
         </button>
-        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-2.5-pro">
-          <span class="seg-title">Gemini Pro</span>
-          <span class="seg-sub">gemini-2.5-pro</span>
+        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-3.8-flash">
+          <span class="seg-title">Flash</span>
+          <span class="seg-sub">gemini-3.8-flash</span>
         </button>
       </div>
-      <p class="control-help" id="transcriptionModelHelp">Fastest · great for clear audio and long files.</p>
+      <p class="control-help" id="transcriptionModelHelp">Dedicated speech-to-text · best for accurate timestamps and speaker diarization.</p>
     </div>
 
     <div class="control">
@@ -1086,7 +1075,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
         <div class="combo-popover" id="langPopover" hidden>
           <div class="combo-search-wrap">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-            <input id="langSearch" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="langList" placeholder="Search 99 languages…" autocomplete="off" spellcheck="false" />
+            <input id="langSearch" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="langList" placeholder="Search 85+ languages…" autocomplete="off" spellcheck="false" />
           </div>
           <ul class="combo-list" id="langList" role="listbox" aria-label="Languages"></ul>
           <div class="combo-empty" id="langEmpty" hidden>No languages found.</div>
@@ -1099,12 +1088,12 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <div class="control">
       <span class="control-label" id="postModelLabel">Post-processing model</span>
       <div class="segmented" id="postModelControl" role="radiogroup" aria-labelledby="postModelLabel">
-        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-2.5-flash">
-          <span class="seg-title">Gemini Flash</span>
+        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-3.8-flash">
+          <span class="seg-title">Flash</span>
           <span class="seg-sub">fast · lightweight</span>
         </button>
-        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-2.5-pro">
-          <span class="seg-title">Gemini Pro</span>
+        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-3.1-pro-preview">
+          <span class="seg-title">Pro</span>
           <span class="seg-sub">deep · high accuracy</span>
         </button>
       </div>
@@ -1218,7 +1207,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
             <span class="meta-sep" aria-hidden="true"></span>
             <span class="meta-item" id="durationMeta"></span>
             <span class="meta-sep" aria-hidden="true"></span>
-            <span class="meta-item" id="modelMeta">Flash</span>
+            <span class="meta-item" id="modelMeta">Transcribe</span>
           </div>
         </div>
 
@@ -1281,7 +1270,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
             <h3>AI finish</h3>
             <p>Polish, summarize, or translate with Gemini.</p>
           </div>
-          <span class="powered-pill" id="postModelBadge">2.5-flash</span>
+          <span class="powered-pill" id="postModelBadge">3.8-flash</span>
         </div>
 
         <div class="post-grid">
@@ -1353,7 +1342,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
   <p>
     Built for the <a href="https://ai.google.dev/gemini-api/docs" target="_blank" rel="noopener noreferrer">Gemini API</a>.
     Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>.
-    <span class="version-badge">v0.2.1</span>
+    <span class="version-badge">v0.2.2</span>
   </p>
   <p class="footer-muted">Client-side only · No analytics · Your key stays in this tab.</p>
 </footer>
@@ -1408,7 +1397,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
 
 <script type="module">
 /* ==========================================================================
-   Scribe v0.2.1 — single-file Gemini transcription studio
+   Scribe v0.2.2 — single-file Gemini transcription studio
    Vanilla JS. No build step. No external frameworks.
    ========================================================================== */
 
@@ -1418,15 +1407,15 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
 const GEMINI_DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const FILES_UPLOAD_BASE = 'https://generativelanguage.googleapis.com/upload/v1beta';
 const KEY_STORAGE = 'scribe.gemini.key';
-const PREFS_STORAGE = 'scribe.prefs.v021';
+const PREFS_STORAGE = 'scribe.prefs.v022';
 const THEME_STORAGE = 'scribe.theme';
 
 const INLINE_MAX_BYTES = 12 * 1024 * 1024;      // inline base64 threshold
 const MAX_FILE_BYTES = 100 * 1024 * 1024;       // practical cap for this UI
 const MAX_RECORD_SECONDS = 600;                 // 10 minutes
 
-const TRANS_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
-const POST_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+const TRANS_MODELS = ['gemini-3.5-transcribe', 'gemini-3.8-flash'];
+const POST_MODELS = ['gemini-3.8-flash', 'gemini-3.1-pro-preview'];
 const EFFORT_LEVELS = ['low', 'medium', 'high'];
 
 const SUPPORTED_EXTENSIONS = ['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'wav', 'aiff', 'aif', 'webm'];
@@ -1602,8 +1591,8 @@ const state = {
   rememberKey: true,
   baseUrl: GEMINI_DEFAULT_BASE,
 
-  transcriptionModel: 'gemini-2.5-flash',
-  postModel: 'gemini-2.5-flash',
+  transcriptionModel: 'gemini-3.5-transcribe',
+  postModel: 'gemini-3.8-flash',
   reasoningEffort: 'medium',
   language: 'auto',
 
@@ -1877,10 +1866,7 @@ function saveKey(event) {
     return;
   }
 
-  // Google issues two key shapes in the wild:
-  //   • legacy "AIzaSy..." (39 chars, alphanum + - _)
-  //   • newer AI Studio "AQ.Ab8..." (>=20 chars, dots, alphanum + - _)
-  // Anything else plausible is forwarded — Google will return a 401 if wrong.
+  // Accept classic (AIza…) and newer AI Studio (AQ.Ab8…) key formats.
   const isClassicKey   = /^AIza[0-9A-Za-z\-_]{20,}$/.test(value);
   const isNewStyleKey  = /^AQ\.[0-9A-Za-z\-_.]{20,}$/.test(value);
   const isPlausibleKey = value.length >= 20 && !/\s/.test(value);
@@ -2093,20 +2079,20 @@ function setupSegmented(container, initialValue, onChange) {
 }
 
 function updateTranscriptionModelUI() {
-  const flash = state.transcriptionModel.endsWith('flash');
-  els.transcriptionModelHelp.textContent = flash
-    ? 'Fastest · great for clear audio and long files.'
-    : 'Highest accuracy · best for accents, noise, and tricky audio.';
-  els.enginePillText.textContent = flash ? 'Gemini Flash' : 'Gemini Pro';
-  els.modelMeta.textContent = flash ? 'Flash' : 'Pro';
+  const isTranscribe = state.transcriptionModel.includes('transcribe');
+  els.transcriptionModelHelp.textContent = isTranscribe
+    ? 'Dedicated speech-to-text · best for accurate timestamps and speaker diarization.'
+    : 'General vision model · fast and capable across many tasks.';
+  els.enginePillText.textContent = isTranscribe ? 'Gemini Transcribe' : 'Gemini Flash';
+  els.modelMeta.textContent = isTranscribe ? 'Transcribe' : 'Flash';
 }
 
 function updatePostModelUI() {
-  const pro = state.postModel.endsWith('pro');
-  els.postModelHelp.textContent = pro
+  const isPro = state.postModel.includes('pro');
+  els.postModelHelp.textContent = isPro
     ? 'Deeper reasoning · better for complex summaries and nuance.'
     : 'Fast and lightweight · ideal for cleanup and quick summaries.';
-  els.postModelBadge.textContent = state.postModel.replace('gemini-', '');
+  els.postModelBadge.textContent = state.postModel.replace('gemini-', '').replace('-preview', '');
 }
 
 /* --------------------------------------------------------------------------
@@ -2784,7 +2770,7 @@ function updateMeta() {
     ? `${languageName(state.detectedLanguage)} · ${state.detectedLanguage}`
     : 'Language auto';
   els.durationMeta.textContent = state.duration != null ? formatClock(state.duration) : '';
-  els.modelMeta.textContent = state.transcriptionModel.endsWith('flash') ? 'Flash' : 'Pro';
+  els.modelMeta.textContent = state.transcriptionModel.includes('transcribe') ? 'Transcribe' : 'Flash';
 }
 
 function updateCounts() {
@@ -2950,7 +2936,7 @@ function setPostProcessing(active) {
 }
 
 function thinkingConfigFor(model, effort) {
-  const isPro = model.endsWith('pro');
+  const isPro = model.includes('pro');
   const budgets = isPro
     ? { low: 128, medium: 4096, high: 16384 }
     : { low: 0, medium: 4096, high: 16384 };
@@ -3394,4 +3380,4 @@ function init() {
 init();
 </script>
 </body>
-        </html>
+  </html>
