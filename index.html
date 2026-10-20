@@ -1,0 +1,3388 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#07080c" />
+<title>Scribe v0.2 — Gemini transcription studio</title>
+<meta name="description" content="A fast, elegant, client-side speech-to-text studio powered by Google AI Studio (Gemini), with AI post-processing." />
+
+<!--
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║  SCRIBE v0.2 — Gemini speech studio                                       ║
+  ║                                                                          ║
+  ║  HOW TO USE                                                              ║
+  ║  1. Get a free Google AI Studio key:                                      ║
+  ║       https://aistudio.google.com/apikey                                  ║
+  ║  2. Open this page over HTTPS or localhost (the mic needs a secure        ║
+  ║     context; file:// may disable recording).                              ║
+  ║  3. Paste the key, upload/record audio, pick models and language, then    ║
+  ║     press “Transcribe audio”.                                             ║
+  ║                                                                          ║
+  ║  LIMITS (Gemini API)                                                      ║
+  ║  • Audio < 12 MB is sent inline (base64) in a single generateContent      ║
+  ║    call. Larger files are uploaded to the Gemini Files API, which keeps   ║
+  ║    them for 48 hours and supports up to 2 GB. This UI caps at 100 MB.     ║
+  ║  • Supported audio: WAV, MP3, AIFF, AAC, OGG, FLAC; video: MP4, WEBM.     ║
+  ║  • Free tier is rate-limited (RPM + RPD). Pro is much stricter than Flash.║
+  ║                                                                          ║
+  ║  BROWSERS                                                                 ║
+  ║  Chrome, Edge, Firefox, Safari 14.1+. Recording format varies by browser  ║
+  ║  (WebM/Opus on Chrome/Firefox, MP4/AAC on Safari).                        ║
+  ║                                                                          ║
+  ║  CORS NOTE                                                                ║
+  ║  Gemini’s REST endpoints allow browser calls, but corporate proxies may   ║
+  ║  strip CORS. If you see a network error, route through your own trusted   ║
+  ║  proxy via “Advanced options → API base URL” (your proxy will see the     ║
+  ║  key, so only use infrastructure you control).                            ║
+  ╚══════════════════════════════════════════════════════════════════════════╝
+-->
+
+<style>
+/* ==========================================================================
+   1. Design tokens
+   ========================================================================== */
+:root {
+  color-scheme: dark;
+  --bg: #07080c;
+  --bg-elevated: #0c0e14;
+  --surface: rgba(18, 20, 29, 0.72);
+  --surface-solid: #12141d;
+  --surface-2: #191c27;
+  --surface-3: #222635;
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f4f1ea;
+  --text-soft: #c9c5bb;
+  --muted: #8d8995;
+  --faint: #5e5b67;
+  --accent: #4285f4;
+  --accent-2: #8ab4f8;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(66, 133, 244, 0.13);
+  --violet: #a78bfa;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.48);
+  --shadow-md: 0 14px 40px rgba(0, 0, 0, 0.32);
+  --radius-xl: 24px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "URW Palladio L", P052, Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3efe7;
+  --bg-elevated: #fbf9f4;
+  --surface: rgba(255, 255, 255, 0.74);
+  --surface-solid: #fffdf8;
+  --surface-2: #f0ebe1;
+  --surface-3: #e6dfd2;
+  --border: rgba(29, 25, 18, 0.09);
+  --border-strong: rgba(29, 25, 18, 0.18);
+  --text: #1c1a16;
+  --text-soft: #46423a;
+  --muted: #6f6a5f;
+  --faint: #938d80;
+  --accent: #1a73e8;
+  --accent-2: #4285f4;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(26, 115, 232, 0.10);
+  --violet: #7c5ce0;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #be123c;
+  --shadow-lg: 0 30px 80px rgba(74, 52, 30, 0.14);
+  --shadow-md: 0 14px 40px rgba(74, 52, 30, 0.09);
+}
+
+/* ==========================================================================
+   2. Reset & base
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background:
+    radial-gradient(1100px 700px at 12% -12%, rgba(66, 133, 244, 0.15), transparent 62%),
+    radial-gradient(900px 760px at 102% 4%, rgba(167, 139, 250, 0.10), transparent 58%),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(1000px 650px at 10% -10%, rgba(26, 115, 232, 0.10), transparent 60%),
+    radial-gradient(900px 700px at 100% 0%, rgba(124, 92, 224, 0.07), transparent 55%),
+    var(--bg);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.032;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+button, input, textarea, select { font: inherit; }
+button { color: inherit; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+svg { display: block; }
+[hidden] { display: none !important; }
+
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background-clip: padding-box;
+}
+
+/* ==========================================================================
+   3. Ambient background
+   ========================================================================== */
+.ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.55; animation: drift 20s ease-in-out infinite alternate; }
+.orb-a { width: 520px; height: 520px; top: -190px; left: -140px; background: rgba(66, 133, 244, 0.22); }
+.orb-b { width: 640px; height: 640px; top: 16%; right: -250px; background: rgba(167, 139, 250, 0.13); animation-delay: -7s; }
+.orb-c { width: 430px; height: 430px; bottom: -180px; left: 34%; background: rgba(74, 222, 128, 0.07); animation-delay: -13s; }
+[data-theme="light"] .orb { opacity: 0.38; }
+
+@keyframes drift {
+  from { transform: translate3d(-18px, -10px, 0) scale(1); }
+  to   { transform: translate3d(24px, 18px, 0) scale(1.06); }
+}
+
+/* ==========================================================================
+   4. Layout & header
+   ========================================================================== */
+.shell { width: min(1180px, calc(100% - 40px)); margin-inline: auto; }
+
+.skip-link {
+  position: fixed; top: 12px; left: 12px; z-index: 200;
+  transform: translateY(-160%);
+  transition: transform 0.2s var(--ease);
+  background: var(--accent); color: var(--accent-ink);
+  padding: 10px 14px; border-radius: 8px;
+  font-weight: 700; text-decoration: none;
+}
+.skip-link:focus { transform: translateY(0); }
+
+.site-header {
+  position: sticky; top: 0; z-index: 60;
+  border-bottom: 1px solid var(--border);
+  background: rgba(7, 8, 12, 0.68);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+[data-theme="light"] .site-header { background: rgba(243, 239, 231, 0.72); }
+
+.header-inner {
+  min-height: 66px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+
+.brand {
+  display: inline-flex; align-items: center; gap: 11px;
+  color: var(--text); text-decoration: none;
+  font-weight: 700; letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 11px;
+  background: linear-gradient(145deg, var(--accent-2), var(--accent));
+  display: flex; align-items: center; justify-content: center; gap: 2.5px;
+  box-shadow: 0 8px 22px rgba(66, 133, 244, 0.28);
+}
+
+.brand-mark span {
+  display: block; width: 3px; border-radius: 99px;
+  background: var(--accent-ink);
+  animation: logoBars 1.8s ease-in-out infinite alternate;
+}
+.brand-mark span:nth-child(1) { height: 9px; animation-delay: -0.2s; }
+.brand-mark span:nth-child(2) { height: 16px; animation-delay: -0.5s; }
+.brand-mark span:nth-child(3) { height: 12px; animation-delay: -0.8s; }
+
+@keyframes logoBars { from { transform: scaleY(0.7); } to { transform: scaleY(1.15); } }
+
+.brand-name { font-size: 1.04rem; }
+.brand-dot { color: var(--accent); }
+
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+.model-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 7px; height: 7px; flex: none; border-radius: 50%;
+  background: var(--faint);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.035);
+}
+.status-dot.is-on {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.13), 0 0 14px rgba(74, 222, 128, 0.5);
+}
+
+/* ==========================================================================
+   5. Buttons & controls
+   ========================================================================== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 38px; padding: 9px 15px;
+  border: 1px solid transparent; border-radius: 11px;
+  background: transparent; color: var(--text);
+  font-size: 0.86rem; font-weight: 650; line-height: 1;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+.btn:disabled { opacity: 0.42; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  color: var(--accent-ink);
+  border-color: transparent;
+  box-shadow: 0 10px 26px rgba(66, 133, 244, 0.30);
+}
+.btn-primary:hover:not(:disabled) { box-shadow: 0 14px 32px rgba(66, 133, 244, 0.36); filter: saturate(1.06); }
+
+.btn-secondary { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-3); }
+
+.btn-ghost { background: transparent; border-color: var(--border); color: var(--text-soft); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+
+.btn-lg { flex: 1; min-height: 50px; padding: 15px 20px; font-size: 0.98rem; border-radius: 14px; }
+.btn-sm { min-height: 32px; padding: 7px 11px; font-size: 0.78rem; border-radius: 9px; }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; padding: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: transparent; color: var(--text-soft); cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease);
+}
+.icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.icon-btn:active:not(:disabled) { transform: scale(0.95); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.icon-btn svg { width: 17px; height: 17px; }
+
+.icon-btn.tiny { width: 30px; height: 30px; border: 0; border-radius: 8px; font-size: 1.15rem; color: var(--muted); }
+.text-icon { width: auto; min-width: 42px; padding-inline: 9px; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; }
+
+.key-trigger { gap: 7px; }
+.key-trigger.is-connected { color: var(--text); }
+
+kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.10);
+  color: inherit; opacity: 0.64;
+  font-family: var(--font-mono); font-size: 0.63rem; font-weight: 500;
+}
+.btn-primary kbd { border-color: rgba(0, 0, 0, 0.18); background: rgba(255, 255, 255, 0.18); }
+
+.spinner {
+  width: 15px; height: 15px; flex: none;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ==========================================================================
+   6. Hero
+   ========================================================================== */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.78fr);
+  align-items: end;
+  gap: clamp(28px, 5vw, 70px);
+  padding: clamp(44px, 7vw, 86px) 0 32px;
+}
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 9px;
+  color: var(--text-soft);
+  font-size: 0.71rem; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase;
+}
+
+.eyebrow-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  animation: breathe 2.8s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  50%      { box-shadow: 0 0 0 7px transparent; }
+}
+
+.hero h1 {
+  margin: 18px 0 20px;
+  font-family: var(--font-display);
+  font-size: clamp(2.75rem, 6.8vw, 5.35rem);
+  font-weight: 400; line-height: 0.94; letter-spacing: -0.048em;
+}
+.hero h1 em { font-style: italic; color: var(--accent); letter-spacing: -0.055em; }
+
+.lede {
+  max-width: 58ch; margin: 0;
+  color: var(--text-soft);
+  font-size: clamp(0.98rem, 1.5vw, 1.1rem);
+  line-height: 1.68;
+}
+
+.feature-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
+.feature-row li {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 0.73rem; font-weight: 550;
+}
+.feature-row svg { width: 13px; height: 13px; color: var(--accent); }
+
+.key-card {
+  position: relative; padding: 20px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent 55%), var(--surface);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.key-card::before {
+  content: "";
+  position: absolute; width: 160px; height: 160px; top: -80px; right: -60px;
+  border-radius: 50%; background: var(--accent); opacity: 0.11; filter: blur(34px);
+  pointer-events: none;
+}
+.key-card.needs-key { animation: keyAttention 3.4s ease-in-out infinite; }
+@keyframes keyAttention {
+  0%, 100% { box-shadow: var(--shadow-md), 0 0 0 0 rgba(66, 133, 244, 0); }
+  50%      { box-shadow: var(--shadow-md), 0 0 0 7px rgba(66, 133, 244, 0.065); }
+}
+.key-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.key-card-kicker { color: var(--muted); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.key-card-title { margin: 0 0 7px; font-family: var(--font-display); font-size: 1.36rem; font-weight: 500; letter-spacing: -0.025em; }
+.key-card-text { min-height: 2.7em; margin: 0 0 16px; color: var(--muted); font-size: 0.8rem; line-height: 1.55; }
+.key-card-btn { width: 100%; }
+.key-card-foot { margin: 13px 0 0; color: var(--faint); font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.02em; }
+
+/* ==========================================================================
+   7. Settings card
+   ========================================================================== */
+.controls-card {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1.12fr;
+  gap: clamp(18px, 2.6vw, 32px);
+  padding: 22px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  margin-bottom: 22px;
+}
+.control { min-width: 0; }
+.control-label { display: block; margin-bottom: 9px; color: var(--muted); font-size: 0.66rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
+.control-help { margin: 9px 0 0; color: var(--faint); font-size: 0.7rem; line-height: 1.45; }
+
+.segmented { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+.segmented button {
+  flex: 1; min-width: 0; padding: 8px 8px;
+  border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: var(--muted); cursor: pointer; text-align: left;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.segmented button:hover { color: var(--text-soft); background: rgba(255, 255, 255, 0.035); }
+.segmented button[aria-checked="true"] {
+  background: var(--surface-solid);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+.seg-title { display: block; font-size: 0.8rem; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-sub { display: block; margin-top: 3px; color: var(--faint); font-family: var(--font-mono); font-size: 0.59rem; font-weight: 500; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.segmented button[aria-checked="true"] .seg-sub { color: var(--accent); }
+
+/* Language combobox */
+.combo { position: relative; }
+.combo-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: 46px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface-2); color: var(--text); cursor: pointer; text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.combo-trigger:hover { border-color: var(--border-strong); }
+.combo-trigger[aria-expanded="true"] { border-color: var(--accent); background: var(--surface-solid); }
+.combo-value-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#langValue { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; font-weight: 600; }
+.combo-code { flex: none; padding: 2px 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--faint); font-family: var(--font-mono); font-size: 0.57rem; font-weight: 650; letter-spacing: 0.04em; }
+.chevron { width: 15px; height: 15px; flex: none; color: var(--muted); transition: transform 0.2s var(--ease); }
+.combo-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+.combo-popover {
+  position: absolute; top: calc(100% + 7px); left: 0; right: 0; z-index: 40;
+  padding: 7px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-lg);
+  animation: popIn 0.18s var(--ease);
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(-5px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.combo-search-wrap { position: relative; display: flex; align-items: center; padding: 0 4px; }
+.combo-search-wrap svg { position: absolute; left: 10px; width: 14px; height: 14px; color: var(--faint); pointer-events: none; }
+#langSearch {
+  width: 100%; height: 38px; padding: 0 10px 0 31px;
+  border: 1px solid var(--border); border-radius: 9px; outline: none;
+  background: var(--surface-2); color: var(--text); font-size: 0.82rem;
+}
+#langSearch:focus { border-color: var(--accent); }
+
+.combo-list { max-height: 232px; margin: 6px 0 0; padding: 2px; overflow-y: auto; list-style: none; }
+.combo-option { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px; cursor: pointer; transition: background 0.12s ease; }
+.combo-option:hover, .combo-option.is-active { background: var(--surface-2); }
+.combo-option[aria-selected="true"] { background: var(--accent-soft); color: var(--text); }
+.option-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; font-weight: 550; }
+.option-hint { color: var(--faint); font-size: 0.65rem; }
+.option-code { flex: none; color: var(--faint); font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.04em; }
+.option-check { flex: none; width: 14px; color: var(--accent); font-size: 0.78rem; font-weight: 800; text-align: center; }
+.combo-empty { padding: 18px 10px; color: var(--muted); font-size: 0.78rem; text-align: center; }
+
+/* ==========================================================================
+   8. Workspace
+   ========================================================================== */
+.workspace { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); gap: 22px; align-items: start; padding-bottom: 40px; }
+
+.card {
+  position: relative; min-width: 0; padding: 22px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+[data-theme="light"] .card { box-shadow: 0 18px 50px rgba(74, 52, 30, 0.075); }
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.card-head h2 { margin: 0 0 4px; font-family: var(--font-display); font-size: 1.48rem; font-weight: 500; letter-spacing: -0.028em; }
+.card-sub { margin: 0; color: var(--muted); font-size: 0.79rem; line-height: 1.45; }
+.format-pill { flex: none; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--faint); font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.03em; }
+
+/* ==========================================================================
+   9. Input card
+   ========================================================================== */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 174px; margin-top: 18px; padding: 24px;
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius-md);
+  background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 60%), rgba(255, 255, 255, 0.012);
+  text-align: center; cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s var(--ease);
+}
+.dropzone:hover, .dropzone.is-dragover {
+  border-color: var(--accent);
+  background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 62%), rgba(255, 255, 255, 0.025);
+}
+.dropzone.is-dragover { transform: scale(1.008); box-shadow: 0 0 0 4px var(--accent-soft); }
+.dropzone[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+.dropzone-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; margin-bottom: 11px;
+  border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface-2); color: var(--accent);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+.dropzone-icon svg { width: 21px; height: 21px; }
+.dropzone-title { margin: 0; font-size: 0.9rem; font-weight: 650; letter-spacing: -0.01em; }
+.dropzone-sub { margin: 4px 0 0; color: var(--muted); font-size: 0.78rem; }
+.link-look { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.dropzone-formats { margin: 13px 0 0; color: var(--faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.075em; }
+
+.file-chip {
+  display: flex; align-items: center; gap: 11px;
+  margin-top: 12px; padding: 10px 11px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: fadeInUp 0.25s var(--ease);
+}
+.file-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none; border-radius: 9px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.file-icon svg { width: 17px; height: 17px; }
+.file-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.79rem; font-weight: 600; }
+.file-meta { color: var(--faint); font-family: var(--font-mono); font-size: 0.6rem; }
+
+.audio-preview { margin-top: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.audio-preview audio { display: block; width: 100%; height: 36px; }
+
+.or-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0 12px; color: var(--faint); font-size: 0.63rem; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; }
+.or-divider::before, .or-divider::after { content: ""; height: 1px; flex: 1; background: var(--border); }
+
+.record-panel {
+  padding: 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.025), transparent 60%), var(--surface-2);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.record-panel.is-recording { border-color: rgba(251, 113, 133, 0.38); box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.07); }
+.record-row { display: flex; align-items: center; gap: 12px; }
+
+.record-btn {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 50px; height: 50px; flex: none; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface-3); color: var(--danger);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s var(--ease), box-shadow 0.18s ease;
+}
+.record-btn:hover:not(:disabled) { transform: scale(1.04); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18); }
+.record-btn:active:not(:disabled) { transform: scale(0.98); }
+.record-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.rec-icon-mic { width: 20px; height: 20px; }
+.rec-icon-stop { display: none; width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
+.record-btn.is-recording {
+  background: var(--danger); color: #fff; border-color: transparent;
+  animation: recordPulse 2.4s ease-in-out infinite;
+}
+.record-btn.is-recording .rec-icon-mic { display: none; }
+.record-btn.is-recording .rec-icon-stop { display: block; }
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.26); }
+  55%      { box-shadow: 0 0 0 11px rgba(251, 113, 133, 0); }
+}
+
+.record-copy { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.record-timer { font-family: var(--font-mono); font-size: 1.16rem; font-weight: 650; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.record-status { color: var(--muted); font-size: 0.68rem; }
+.waveform { display: block; width: 100%; height: 64px; margin-top: 10px; }
+
+.advanced { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 13px; }
+.advanced summary {
+  display: flex; align-items: center; gap: 7px;
+  color: var(--muted); font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; list-style: none; user-select: none;
+}
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary::before {
+  content: "+"; display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  border: 1px solid var(--border); border-radius: 5px;
+  color: var(--faint); font-family: var(--font-mono); font-size: 0.72rem;
+  transition: transform 0.2s ease;
+}
+.advanced[open] summary::before { content: "−"; }
+.advanced summary:hover { color: var(--text-soft); }
+
+.advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+.field { min-width: 0; }
+.field label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--text-soft); font-size: 0.73rem; font-weight: 600; }
+.label-hint { color: var(--faint); font-family: var(--font-mono); font-size: 0.57rem; font-weight: 500; }
+.field textarea, .field input, .field select {
+  width: 100%;
+  border: 1px solid var(--border); border-radius: 9px; outline: none;
+  background: var(--surface-2); color: var(--text); font-size: 0.78rem;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.field textarea { min-height: 64px; padding: 9px 10px; resize: vertical; line-height: 1.5; }
+.field input, .field select { height: 38px; padding: 0 10px; }
+.field select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d8995' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+  cursor: pointer;
+}
+.field textarea:focus, .field input:focus, .field select:focus { border-color: var(--accent); }
+.field-help { margin: 6px 0 0; color: var(--faint); font-size: 0.64rem; line-height: 1.45; }
+.field-meta { margin-top: 4px; color: var(--faint); font-family: var(--font-mono); font-size: 0.58rem; text-align: right; }
+.inline-field { display: flex; align-items: center; gap: 7px; }
+.inline-field input { flex: 1; min-width: 0; }
+
+.input-actions { display: flex; align-items: stretch; gap: 9px; margin-top: 18px; }
+.microcopy { margin: 11px 0 0; color: var(--faint); font-size: 0.62rem; line-height: 1.45; text-align: center; }
+
+/* ==========================================================================
+   10. Transcript card
+   ========================================================================== */
+.transcript-card { display: flex; flex-direction: column; min-height: 660px; }
+.transcript-head { align-items: flex-start; }
+
+.tabs { display: flex; flex: none; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.tab {
+  position: relative; padding: 7px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-size: 0.68rem; font-weight: 650; cursor: pointer; white-space: nowrap;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.tab:hover { color: var(--text-soft); }
+.tab[aria-selected="true"] { background: var(--surface-solid); color: var(--text); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); }
+.tab-dot { display: inline-block; width: 5px; height: 5px; margin-left: 3px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+
+.meta-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+.meta-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-size: 0.61rem; font-weight: 600; }
+.meta-item { color: var(--faint); font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.02em; }
+.meta-sep { width: 2px; height: 2px; border-radius: 50%; background: var(--faint); }
+
+.progress-line { position: relative; height: 2px; margin-top: 14px; overflow: hidden; border-radius: 99px; background: var(--surface-2); }
+.progress-line::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 45% 100%; background-repeat: no-repeat;
+  animation: indeterminate 1.3s linear infinite;
+}
+@keyframes indeterminate { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+.editor-area { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 312px; margin-top: 12px; }
+.tab-panel { display: flex; flex-direction: column; flex: 1; }
+
+.editor {
+  width: 100%; min-height: 312px; flex: 1; padding: 8px 2px;
+  border: 0; outline: 0; resize: vertical;
+  background: transparent; color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1rem; line-height: 1.76; letter-spacing: -0.005em;
+}
+.editor::placeholder { color: var(--faint); }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1; min-height: 290px; padding: 36px 22px;
+  border: 1px dashed var(--border); border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.012); text-align: center;
+}
+.empty-state.small { min-height: 230px; }
+.empty-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 13px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-2); color: var(--accent); }
+.empty-icon svg { width: 22px; height: 22px; }
+.empty-title { margin: 0; font-size: 0.86rem; font-weight: 650; }
+.empty-sub { max-width: 32ch; margin: 5px 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
+.empty-sub strong { color: var(--text-soft); }
+
+.skeleton { flex: 1; min-height: 290px; padding: 22px 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+.skeleton-line {
+  height: 12px; margin-bottom: 13px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-3) 25%, rgba(255, 255, 255, 0.07) 37%, var(--surface-3) 63%);
+  background-size: 400% 100%; animation: shimmer 1.5s ease infinite;
+}
+.skeleton-line.w-92 { width: 92%; } .skeleton-line.w-84 { width: 84%; } .skeleton-line.w-96 { width: 96%; } .skeleton-line.w-66 { width: 66%; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.skeleton-note { margin: 18px 0 0; color: var(--faint); font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em; }
+
+.segments-details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.segments-details summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.71rem; font-weight: 650; cursor: pointer; list-style: none; user-select: none; }
+.segments-details summary::-webkit-details-marker { display: none; }
+.segments-details summary:hover { color: var(--text-soft); }
+.summary-meta { color: var(--faint); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 500; }
+
+.segments { max-height: 230px; margin-top: 9px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.segment-row {
+  display: grid; grid-template-columns: 54px minmax(0, 1fr) 9px; align-items: start; gap: 9px;
+  width: 100%; padding: 9px 10px;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--text); cursor: pointer; text-align: left;
+  transition: background 0.13s ease;
+}
+.segment-row:last-child { border-bottom: 0; }
+.segment-row:hover { background: var(--surface-3); }
+.segment-time { padding-top: 1px; color: var(--accent); font-family: var(--font-mono); font-size: 0.61rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.segment-text { color: var(--text-soft); font-size: 0.75rem; line-height: 1.5; }
+.segment-confidence { width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--faint); }
+.segment-confidence[data-level="high"] { background: var(--success); }
+.segment-confidence[data-level="medium"] { background: var(--warning); }
+.segment-confidence[data-level="low"] { background: var(--danger); }
+
+.post-process {
+  margin-top: 16px; padding: 15px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 44%), var(--surface-2);
+}
+.post-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.post-head h3 { margin: 0 0 3px; font-size: 0.8rem; font-weight: 750; letter-spacing: 0.01em; }
+.post-head p { margin: 0; color: var(--faint); font-size: 0.67rem; }
+.powered-pill { flex: none; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-solid); color: var(--muted); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.03em; }
+
+.post-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-wide { grid-column: 1 / -1; }
+.post-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.post-hint { margin-left: auto; color: var(--faint); font-size: 0.59rem; }
+
+.transcript-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--border); }
+.counts { color: var(--faint); font-family: var(--font-mono); font-size: 0.61rem; font-variant-numeric: tabular-nums; }
+.footer-actions { display: flex; align-items: center; gap: 4px; }
+
+/* ==========================================================================
+   11. Footer
+   ========================================================================== */
+.site-footer {
+  display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px;
+  padding: 22px 0 34px;
+  border-top: 1px solid var(--border);
+  color: var(--faint); font-size: 0.66rem; line-height: 1.5;
+}
+.site-footer p { margin: 0; }
+.footer-muted { color: var(--faint); opacity: 0.8; }
+.version-badge { display: inline-block; padding: 2px 7px; margin-left: 6px; border: 1px solid var(--border); border-radius: 999px; font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.04em; vertical-align: middle; }
+
+/* ==========================================================================
+   12. Dialog
+   ========================================================================== */
+dialog {
+  width: min(500px, calc(100% - 28px));
+  max-height: calc(100dvh - 40px);
+  padding: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-xl);
+  background: var(--surface-solid); color: var(--text);
+  box-shadow: var(--shadow-lg);
+  overflow: auto;
+}
+dialog::backdrop { background: rgba(4, 5, 8, 0.72); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+dialog[open] { animation: dialogIn 0.22s var(--ease); }
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dialog-body { padding: 23px; }
+.dialog-head { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 20px; }
+.dialog-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; flex: none; border-radius: 13px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.dialog-icon svg { width: 20px; height: 20px; }
+.dialog-head h2 { margin: 1px 0 4px; font-family: var(--font-display); font-size: 1.42rem; font-weight: 500; letter-spacing: -0.025em; }
+.dialog-head p { margin: 0; color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
+.dialog-head .icon-btn { margin-left: auto; flex: none; }
+
+.dialog-body > label { display: block; margin-bottom: 7px; color: var(--text-soft); font-size: 0.73rem; font-weight: 650; }
+
+.key-input-wrap {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); overflow: hidden;
+  transition: border-color 0.16s ease;
+}
+.key-input-wrap:focus-within { border-color: var(--accent); }
+#keyInput {
+  flex: 1; min-width: 0; height: 42px; padding: 0 11px;
+  border: 0; outline: 0; background: transparent; color: var(--text);
+  font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.02em;
+}
+#toggleKeyVisibility {
+  flex: none; padding: 0 11px;
+  border: 0; border-left: 1px solid var(--border);
+  background: transparent; color: var(--muted);
+  font-size: 0.66rem; font-weight: 650; cursor: pointer;
+}
+#toggleKeyVisibility:hover { color: var(--text); }
+
+.dialog-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin-top: 11px; font-size: 0.71rem; }
+.checkbox { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); cursor: pointer; }
+.checkbox input { width: 14px; height: 14px; accent-color: var(--accent); }
+.dialog-row a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.dialog-row a:hover { text-decoration: underline; }
+
+.dialog-note {
+  margin: 14px 0 0; padding: 10px 11px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-2); color: var(--faint);
+  font-size: 0.67rem; line-height: 1.5;
+}
+.dialog-note code { color: var(--text-soft); font-family: var(--font-mono); font-size: 0.62rem; }
+
+.dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.dialog-actions .btn-ghost { margin-right: auto; }
+
+/* ==========================================================================
+   13. Toasts
+   ========================================================================== */
+.toast-container {
+  position: fixed; right: 20px; bottom: 20px; z-index: 200;
+  display: flex; flex-direction: column; gap: 9px;
+  width: min(390px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(16px) scale(0.98);
+  transition: opacity 0.24s ease, transform 0.24s var(--ease);
+  pointer-events: auto;
+}
+.toast.is-visible { opacity: 1; transform: translateY(0) scale(1); }
+.toast.is-leaving { opacity: 0; transform: translateY(8px) scale(0.98); }
+.toast-success { border-left-color: var(--success); }
+.toast-error { border-left-color: var(--danger); }
+.toast-warning { border-left-color: var(--warning); }
+.toast-info { border-left-color: var(--violet); }
+
+.toast-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; flex: none; margin-top: 1px;
+  border-radius: 7px; background: var(--surface-2);
+  color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 800;
+}
+.toast-success .toast-icon { color: var(--success); }
+.toast-error .toast-icon { color: var(--danger); }
+.toast-warning .toast-icon { color: var(--warning); }
+.toast-info .toast-icon { color: var(--violet); }
+
+.toast-body { flex: 1; min-width: 0; }
+.toast-message { margin: 0; color: var(--text-soft); font-size: 0.75rem; line-height: 1.48; overflow-wrap: anywhere; }
+.toast-action { margin-top: 7px; padding: 3px 0; border: 0; background: transparent; color: var(--accent); font-size: 0.7rem; font-weight: 700; cursor: pointer; }
+.toast-action:hover { text-decoration: underline; }
+.toast-close { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--faint); font-size: 1rem; line-height: 1; cursor: pointer; }
+.toast-close:hover { background: var(--surface-2); color: var(--text); }
+
+/* ==========================================================================
+   14. Reveal & responsive
+   ========================================================================== */
+.reveal { animation: fadeInUp 0.55s var(--ease) both; }
+.hero-copy.reveal { animation-delay: 0.04s; }
+.key-card.reveal { animation-delay: 0.14s; }
+.controls-card.reveal { animation-delay: 0.20s; }
+.input-card.reveal { animation-delay: 0.26s; }
+.transcript-card.reveal { animation-delay: 0.32s; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1020px) {
+  .hero { grid-template-columns: 1fr; align-items: start; }
+  .key-card { width: min(100%, 420px); justify-self: start; }
+  .controls-card { grid-template-columns: 1fr 1fr; }
+  .workspace { grid-template-columns: 1fr; }
+  .transcript-card { min-height: 560px; }
+}
+@media (max-width: 680px) {
+  .shell { width: calc(100% - 28px); }
+  .header-inner { min-height: 60px; }
+  .model-pill { display: none; }
+  .brand-name { font-size: 0.95rem; }
+  .key-trigger span:not(.status-dot) { display: none; }
+  .key-trigger { width: 38px; padding: 0; }
+  .hero { padding-top: 36px; }
+  .hero h1 { font-size: clamp(2.45rem, 12vw, 3.6rem); }
+  .controls-card { grid-template-columns: 1fr; gap: 20px; padding: 18px; }
+  .card { padding: 17px; }
+  .transcript-card { min-height: 0; }
+  .transcript-head { flex-direction: column; align-items: stretch; }
+  .tabs { align-self: flex-start; }
+  .advanced-grid { grid-template-columns: 1fr; }
+  .post-grid { grid-template-columns: 1fr; }
+  .post-hint { width: 100%; margin-left: 0; }
+  .input-actions { flex-wrap: wrap; }
+  .input-actions .btn-lg { flex-basis: 100%; }
+  .editor, .empty-state, .skeleton { min-height: 260px; }
+  .record-row { gap: 10px; }
+  .record-btn { width: 46px; height: 46px; }
+  .record-timer { font-size: 1.02rem; }
+  .site-footer { flex-direction: column; }
+  .toast-container { right: 14px; bottom: 14px; }
+}
+@media (max-width: 420px) {
+  .shell { width: calc(100% - 22px); }
+  .btn-lg { font-size: 0.9rem; }
+  .tabs { width: 100%; }
+  .tab { flex: 1; }
+  .file-chip { gap: 8px; }
+  .post-head { flex-direction: column; }
+}
+
+/* ==========================================================================
+   15. Reduced motion & print
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media print {
+  .site-header, .hero, .controls-card, .input-card, .post-process,
+  .segments-details, .transcript-footer, .site-footer, .toast-container, dialog { display: none !important; }
+  body { background: #fff; color: #000; }
+  .card { box-shadow: none; border: 0; background: #fff; }
+  .editor { min-height: 0; height: auto; }
+}
+</style>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="ambient" aria-hidden="true">
+  <span class="orb orb-a"></span>
+  <span class="orb orb-b"></span>
+  <span class="orb orb-c"></span>
+</div>
+
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href="#" aria-label="Scribe home">
+      <span class="brand-mark" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </span>
+      <span class="brand-name">Scribe<span class="brand-dot">.</span></span>
+    </a>
+
+    <div class="header-actions">
+      <span class="model-pill">
+        <span class="status-dot is-on" aria-hidden="true"></span>
+        <span id="enginePillText">Gemini Flash</span>
+      </span>
+      <button class="btn btn-ghost key-trigger" id="keyTrigger" type="button" aria-haspopup="dialog">
+        <span class="status-dot" id="keyTriggerDot" aria-hidden="true"></span>
+        <span id="keyTriggerLabel">Add key</span>
+      </button>
+      <button class="icon-btn" id="themeToggle" type="button" aria-label="Switch to light theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="shell hero" aria-labelledby="heroTitle">
+    <div class="hero-copy reveal">
+      <div class="eyebrow">
+        <span class="eyebrow-dot" aria-hidden="true"></span>
+        Speech to text · Gemini API · v0.2
+      </div>
+      <h1 id="heroTitle">Every word,<br><em>beautifully</em> transcribed.</h1>
+      <p class="lede">
+        Gemini-grade accuracy at lightning speed. Upload a recording or speak into your mic,
+        then refine the result with Gemini 2.5 — polish, summarize, or translate without
+        leaving the page.
+      </p>
+      <ul class="feature-row" aria-label="Highlights">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+          99+ languages
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+          Live mic + upload
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+          Editable transcript
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+          Client-side only
+        </li>
+      </ul>
+    </div>
+
+    <aside class="key-card reveal" id="keyCard" aria-labelledby="keyCardTitle">
+      <div class="key-card-top">
+        <span class="status-dot" id="keyCardDot" aria-hidden="true"></span>
+        <span class="key-card-kicker">Google AI Studio</span>
+      </div>
+      <h2 class="key-card-title" id="keyCardTitle">Connect your Gemini key</h2>
+      <p class="key-card-text" id="keyCardText">
+        Paste a free AI Studio key to start transcribing. It never touches our servers.
+      </p>
+      <button class="btn btn-secondary key-card-btn" id="keyCardBtn" type="button" aria-haspopup="dialog">
+        Add API key
+      </button>
+      <p class="key-card-foot">Free tier · inline ≤ 12 MB · Files API up to 2 GB</p>
+    </aside>
+  </section>
+
+  <section class="shell controls-card reveal" aria-labelledby="controlsTitle">
+    <h2 class="sr-only" id="controlsTitle">Transcription and post-processing settings</h2>
+
+    <div class="control">
+      <span class="control-label" id="transcriptionModelLabel">Transcription model</span>
+      <div class="segmented" id="transcriptionModelControl" role="radiogroup" aria-labelledby="transcriptionModelLabel">
+        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-2.5-flash">
+          <span class="seg-title">Gemini Flash</span>
+          <span class="seg-sub">gemini-2.5-flash</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-2.5-pro">
+          <span class="seg-title">Gemini Pro</span>
+          <span class="seg-sub">gemini-2.5-pro</span>
+        </button>
+      </div>
+      <p class="control-help" id="transcriptionModelHelp">Fastest · great for clear audio and long files.</p>
+    </div>
+
+    <div class="control">
+      <span class="control-label" id="languageLabel">Language</span>
+      <div class="combo" id="langCombo">
+        <button class="combo-trigger" id="langTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="languageLabel langValue">
+          <span class="combo-value-wrap">
+            <span id="langValue">Auto-detect</span>
+            <span class="combo-code" id="langCodeBadge">AUTO</span>
+          </span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div class="combo-popover" id="langPopover" hidden>
+          <div class="combo-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            <input id="langSearch" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="langList" placeholder="Search 99 languages…" autocomplete="off" spellcheck="false" />
+          </div>
+          <ul class="combo-list" id="langList" role="listbox" aria-label="Languages"></ul>
+          <div class="combo-empty" id="langEmpty" hidden>No languages found.</div>
+          <div class="sr-only" id="langResultsCount" aria-live="polite"></div>
+        </div>
+      </div>
+      <p class="control-help">Hint for Gemini · auto-detect works well for most audio.</p>
+    </div>
+
+    <div class="control">
+      <span class="control-label" id="postModelLabel">Post-processing model</span>
+      <div class="segmented" id="postModelControl" role="radiogroup" aria-labelledby="postModelLabel">
+        <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="gemini-2.5-flash">
+          <span class="seg-title">Gemini Flash</span>
+          <span class="seg-sub">fast · lightweight</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="gemini-2.5-pro">
+          <span class="seg-title">Gemini Pro</span>
+          <span class="seg-sub">deep · high accuracy</span>
+        </button>
+      </div>
+      <p class="control-help" id="postModelHelp">Fast and lightweight · ideal for cleanup and quick summaries.</p>
+    </div>
+  </section>
+
+  <div class="shell workspace">
+    <section class="card input-card reveal" aria-labelledby="inputTitle">
+      <div class="card-head">
+        <div>
+          <h2 id="inputTitle">Audio source</h2>
+          <p class="card-sub">Upload a file or record from your microphone.</p>
+        </div>
+        <span class="format-pill">≤ 100 MB</span>
+      </div>
+
+      <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload an audio file">
+        <div class="dropzone-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 16V4"></path>
+            <path d="m7 9 5-5 5 5"></path>
+            <path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"></path>
+          </svg>
+        </div>
+        <p class="dropzone-title">Drop your audio here</p>
+        <p class="dropzone-sub">or <span class="link-look">browse files</span></p>
+        <p class="dropzone-formats">FLAC · MP3 · WAV · M4A · OGG · AIFF · MP4 · WEBM</p>
+      </div>
+      <input type="file" id="fileInput" accept=".flac,.mp3,.mp4,.mpeg,.mpga,.m4a,.ogg,.wav,.aiff,.aif,.webm,audio/*,video/mp4,video/webm" hidden />
+
+      <div class="file-chip" id="fileChip" hidden>
+        <span class="file-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+        </span>
+        <div class="file-copy">
+          <span class="file-name" id="fileName"></span>
+          <span class="file-meta" id="fileMeta"></span>
+        </div>
+        <button class="icon-btn tiny" id="fileRemove" type="button" aria-label="Remove audio file">×</button>
+      </div>
+
+      <div class="audio-preview" id="audioPreviewWrap" hidden>
+        <audio id="audioPreview" controls preload="metadata"></audio>
+      </div>
+
+      <div class="or-divider"><span>or record</span></div>
+
+      <div class="record-panel" id="recordPanel">
+        <div class="record-row">
+          <button class="record-btn" id="recordBtn" type="button" aria-label="Start recording" aria-pressed="false">
+            <svg class="rec-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+              <path d="M5 10a7 7 0 0 0 14 0"></path>
+              <path d="M12 19v3"></path>
+            </svg>
+            <span class="rec-icon-stop" aria-hidden="true"></span>
+          </button>
+          <div class="record-copy">
+            <span class="record-timer" id="recordTimer">00:00</span>
+            <span class="record-status" id="recordStatus">Tap to record</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="stopBtn" type="button" hidden>Stop</button>
+        </div>
+        <canvas class="waveform" id="waveform" height="72" aria-hidden="true"></canvas>
+      </div>
+
+      <details class="advanced">
+        <summary>Advanced options</summary>
+        <div class="advanced-grid">
+          <div class="field">
+            <label for="promptInput">
+              Context
+              <span class="label-hint">optional</span>
+            </label>
+            <textarea id="promptInput" rows="2" maxlength="900" placeholder="Names, jargon, spelling hints…"></textarea>
+            <div class="field-meta"><span id="promptCount">0</span> / 900</div>
+          </div>
+          <div class="field">
+            <label for="baseUrlInput">API base URL</label>
+            <div class="inline-field">
+              <input id="baseUrlInput" type="url" spellcheck="false" autocomplete="off" />
+              <button class="btn btn-ghost btn-sm" id="baseUrlReset" type="button">Reset</button>
+            </div>
+            <p class="field-help">Only change this for a trusted proxy. Your proxy will receive your API key.</p>
+          </div>
+        </div>
+      </details>
+
+      <div class="input-actions">
+        <button class="btn btn-primary btn-lg" id="transcribeBtn" type="button">
+          <span class="spinner" id="transcribeSpinner" hidden aria-hidden="true"></span>
+          <span id="transcribeLabel">Transcribe audio</span>
+          <kbd aria-hidden="true">⌘↵</kbd>
+        </button>
+        <button class="btn btn-ghost" id="cancelTranscribeBtn" type="button" hidden>Cancel</button>
+      </div>
+      <p class="microcopy">Audio is sent directly from your browser to Google. No intermediate server.</p>
+    </section>
+
+    <section class="card transcript-card reveal" id="transcriptCard" aria-labelledby="transcriptTitle">
+      <div class="card-head transcript-head">
+        <div>
+          <h2 id="transcriptTitle">Transcript</h2>
+          <div class="meta-row" id="metaRow" hidden>
+            <span class="meta-badge" id="detectedLangBadge">—</span>
+            <span class="meta-sep" aria-hidden="true"></span>
+            <span class="meta-item" id="durationMeta"></span>
+            <span class="meta-sep" aria-hidden="true"></span>
+            <span class="meta-item" id="modelMeta">Flash</span>
+          </div>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Transcript views">
+          <button class="tab" id="tabTranscript" type="button" role="tab" aria-selected="true" aria-controls="panelTranscript" tabindex="0">Transcript</button>
+          <button class="tab" id="tabEnhanced" type="button" role="tab" aria-selected="false" aria-controls="panelEnhanced" tabindex="-1">
+            AI enhanced <span class="tab-dot" id="tabEnhancedDot" hidden></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="progress-line" id="progressLine" hidden aria-hidden="true"></div>
+
+      <div class="editor-area">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"></path>
+              <path d="M9 20h6"></path>
+              <path d="M12 4v16"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+          </div>
+          <p class="empty-title">Your transcript will appear here</p>
+          <p class="empty-sub">Upload audio or record from your mic, then press <strong>Transcribe</strong>.</p>
+        </div>
+
+        <div class="skeleton" id="skeleton" hidden aria-hidden="true">
+          <div class="skeleton-line w-92"></div>
+          <div class="skeleton-line w-84"></div>
+          <div class="skeleton-line w-96"></div>
+          <div class="skeleton-line w-66"></div>
+          <p class="skeleton-note">Listening for words…</p>
+        </div>
+
+        <div class="tab-panel" id="panelTranscript" role="tabpanel" aria-labelledby="tabTranscript">
+          <textarea class="editor" id="transcriptEditor" spellcheck="true" placeholder="Your transcript will appear here." hidden></textarea>
+        </div>
+
+        <div class="tab-panel" id="panelEnhanced" role="tabpanel" aria-labelledby="tabEnhanced" hidden>
+          <textarea class="editor" id="enhancedEditor" spellcheck="true" placeholder="The AI-enhanced version will appear here." hidden></textarea>
+          <div class="empty-state small" id="enhancedEmpty">
+            <p class="empty-title">Nothing enhanced yet</p>
+            <p class="empty-sub">Run <strong>AI finish</strong> below to polish, summarize, or translate.</p>
+          </div>
+        </div>
+      </div>
+
+      <details class="segments-details" id="segmentsDetails" hidden>
+        <summary>
+          <span>Timeline</span>
+          <span class="summary-meta" id="segmentCount"></span>
+        </summary>
+        <div class="segments" id="segmentsList"></div>
+      </details>
+
+      <div class="post-process">
+        <div class="post-head">
+          <div>
+            <h3>AI finish</h3>
+            <p>Polish, summarize, or translate with Gemini.</p>
+          </div>
+          <span class="powered-pill" id="postModelBadge">2.5-flash</span>
+        </div>
+
+        <div class="post-grid">
+          <div class="field">
+            <label for="postTask">Task</label>
+            <select id="postTask">
+              <option value="polish">Polish &amp; punctuate</option>
+              <option value="summarize">Summarize</option>
+              <option value="translate">Translate to English</option>
+              <option value="custom">Custom instruction</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reasoningEffort">Thinking budget</label>
+            <select id="reasoningEffort">
+              <option value="low">Low · fastest</option>
+              <option value="medium">Medium · balanced</option>
+              <option value="high">High · deepest</option>
+            </select>
+          </div>
+          <div class="field field-wide" id="customInstructionWrap" hidden>
+            <label for="customInstruction">Custom instruction</label>
+            <input id="customInstruction" type="text" maxlength="500" placeholder="e.g. Turn this into meeting notes with action items" />
+          </div>
+        </div>
+
+        <div class="post-actions">
+          <button class="btn btn-secondary" id="postRunBtn" type="button" disabled>
+            <span class="spinner" id="postSpinner" hidden aria-hidden="true"></span>
+            <span id="postRunLabel">Run AI finish</span>
+          </button>
+          <button class="btn btn-ghost" id="postCancelBtn" type="button" hidden>Cancel</button>
+          <span class="post-hint">Runs on your key · review results</span>
+        </div>
+      </div>
+
+      <div class="transcript-footer">
+        <div class="counts" id="counts">0 words · 0 characters</div>
+        <div class="footer-actions">
+          <button class="icon-btn" id="copyBtn" type="button" title="Copy transcript" aria-label="Copy transcript" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="icon-btn" id="downloadBtn" type="button" title="Download .txt" aria-label="Download transcript as text" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12"></path>
+              <path d="m7 10 5 5 5-5"></path>
+              <path d="M20 21H4"></path>
+            </svg>
+          </button>
+          <button class="icon-btn text-icon" id="downloadSrtBtn" type="button" title="Download .srt" aria-label="Download subtitles as SRT" hidden>SRT</button>
+          <button class="icon-btn" id="clearBtn" type="button" title="Clear transcript" aria-label="Clear transcript" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18"></path>
+              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6M14 11v6"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="shell site-footer">
+  <p>
+    Built for the <a href="https://ai.google.dev/gemini-api/docs" target="_blank" rel="noopener noreferrer">Gemini API</a>.
+    Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>.
+    <span class="version-badge">v0.2</span>
+  </p>
+  <p class="footer-muted">Client-side only · No analytics · Your key stays in this tab.</p>
+</footer>
+
+<dialog id="keyDialog" aria-labelledby="keyDialogTitle">
+  <form id="keyForm" class="dialog-body">
+    <div class="dialog-head">
+      <div class="dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7.5" cy="15.5" r="4.5"></circle>
+          <path d="m10.7 12.3 8.8-8.8"></path>
+          <path d="m16 7 3 3"></path>
+          <path d="m19 4 1.5 1.5"></path>
+        </svg>
+      </div>
+      <div>
+        <h2 id="keyDialogTitle">Connect to Google AI Studio</h2>
+        <p>Your key is used only for requests you make here.</p>
+      </div>
+      <button class="icon-btn" id="keyDialogClose" type="button" aria-label="Close API key dialog">×</button>
+    </div>
+
+    <label for="keyInput">Google AI Studio API key</label>
+    <div class="key-input-wrap">
+      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIza..." />
+      <button id="toggleKeyVisibility" type="button" aria-pressed="false">Show</button>
+    </div>
+
+    <div class="dialog-row">
+      <label class="checkbox">
+        <input type="checkbox" id="rememberKey" checked />
+        Remember for this tab
+      </label>
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key ↗</a>
+    </div>
+
+    <p class="dialog-note">
+      When remembered, the key is stored in <code>sessionStorage</code> and cleared when the tab closes.
+      It is never logged, never sent anywhere except Google, and never written to <code>localStorage</code>.
+    </p>
+
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="removeKeyBtn" type="button" hidden>Remove key</button>
+      <button class="btn btn-primary" type="submit">Save key</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+<div class="sr-only" id="statusLive" role="status" aria-live="polite"></div>
+
+<script type="module">
+/* ==========================================================================
+   Scribe v0.2 — single-file Gemini transcription studio
+   Vanilla JS. No build step. No external frameworks.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Constants & reference data
+   -------------------------------------------------------------------------- */
+const GEMINI_DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const FILES_UPLOAD_BASE = 'https://generativelanguage.googleapis.com/upload/v1beta';
+const KEY_STORAGE = 'scribe.gemini.key';
+const PREFS_STORAGE = 'scribe.prefs.v02';
+const THEME_STORAGE = 'scribe.theme';
+
+const INLINE_MAX_BYTES = 12 * 1024 * 1024;      // inline base64 threshold
+const MAX_FILE_BYTES = 100 * 1024 * 1024;       // practical cap for this UI
+const MAX_RECORD_SECONDS = 600;                 // 10 minutes
+
+const TRANS_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+const POST_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+const EFFORT_LEVELS = ['low', 'medium', 'high'];
+
+const SUPPORTED_EXTENSIONS = ['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'wav', 'aiff', 'aif', 'webm'];
+
+// Gemini audio-supported languages (aligned with Whisper’s list, plus Gemini extras).
+const LANGUAGES = [
+  { code: 'af', name: 'Afrikaans' }, { code: 'sq', name: 'Albanian' }, { code: 'am', name: 'Amharic' },
+  { code: 'ar', name: 'Arabic' }, { code: 'hy', name: 'Armenian' }, { code: 'as', name: 'Assamese' },
+  { code: 'az', name: 'Azerbaijani' }, { code: 'ba', name: 'Bashkir' }, { code: 'eu', name: 'Basque' },
+  { code: 'be', name: 'Belarusian' }, { code: 'bn', name: 'Bengali' }, { code: 'bs', name: 'Bosnian' },
+  { code: 'br', name: 'Breton' }, { code: 'bg', name: 'Bulgarian' }, { code: 'yue', name: 'Cantonese' },
+  { code: 'ca', name: 'Catalan' }, { code: 'zh', name: 'Chinese' }, { code: 'hr', name: 'Croatian' },
+  { code: 'cs', name: 'Czech' }, { code: 'da', name: 'Danish' }, { code: 'nl', name: 'Dutch' },
+  { code: 'en', name: 'English' }, { code: 'et', name: 'Estonian' }, { code: 'fo', name: 'Faroese' },
+  { code: 'fi', name: 'Finnish' }, { code: 'fr', name: 'French' }, { code: 'gl', name: 'Galician' },
+  { code: 'ka', name: 'Georgian' }, { code: 'de', name: 'German' }, { code: 'el', name: 'Greek' },
+  { code: 'gu', name: 'Gujarati' }, { code: 'ht', name: 'Haitian Creole' }, { code: 'ha', name: 'Hausa' },
+  { code: 'haw', name: 'Hawaiian' }, { code: 'he', name: 'Hebrew' }, { code: 'hi', name: 'Hindi' },
+  { code: 'hu', name: 'Hungarian' }, { code: 'is', name: 'Icelandic' }, { code: 'id', name: 'Indonesian' },
+  { code: 'it', name: 'Italian' }, { code: 'ja', name: 'Japanese' }, { code: 'jw', name: 'Javanese' },
+  { code: 'kn', name: 'Kannada' }, { code: 'kk', name: 'Kazakh' }, { code: 'km', name: 'Khmer' },
+  { code: 'ko', name: 'Korean' }, { code: 'lo', name: 'Lao' }, { code: 'la', name: 'Latin' },
+  { code: 'lv', name: 'Latvian' }, { code: 'ln', name: 'Lingala' }, { code: 'lt', name: 'Lithuanian' },
+  { code: 'lb', name: 'Luxembourgish' }, { code: 'mk', name: 'Macedonian' }, { code: 'mg', name: 'Malagasy' },
+  { code: 'ms', name: 'Malay' }, { code: 'ml', name: 'Malayalam' }, { code: 'mt', name: 'Maltese' },
+  { code: 'mr', name: 'Marathi' }, { code: 'mn', name: 'Mongolian' }, { code: 'my', name: 'Myanmar' },
+  { code: 'mi', name: 'Maori' }, { code: 'ne', name: 'Nepali' }, { code: 'no', name: 'Norwegian' },
+  { code: 'nn', name: 'Nynorsk' }, { code: 'oc', name: 'Occitan' }, { code: 'ps', name: 'Pashto' },
+  { code: 'fa', name: 'Persian' }, { code: 'pl', name: 'Polish' }, { code: 'pt', name: 'Portuguese' },
+  { code: 'pa', name: 'Punjabi' }, { code: 'ro', name: 'Romanian' }, { code: 'ru', name: 'Russian' },
+  { code: 'sa', name: 'Sanskrit' }, { code: 'sr', name: 'Serbian' }, { code: 'sn', name: 'Shona' },
+  { code: 'sd', name: 'Sindhi' }, { code: 'si', name: 'Sinhala' }, { code: 'sk', name: 'Slovak' },
+  { code: 'sl', name: 'Slovenian' }, { code: 'so', name: 'Somali' }, { code: 'es', name: 'Spanish' },
+  { code: 'su', name: 'Sundanese' }, { code: 'sw', name: 'Swahili' }, { code: 'sv', name: 'Swedish' },
+  { code: 'tl', name: 'Tagalog' }, { code: 'tg', name: 'Tajik' }, { code: 'ta', name: 'Tamil' },
+  { code: 'tt', name: 'Tatar' }, { code: 'te', name: 'Telugu' }, { code: 'th', name: 'Thai' },
+  { code: 'bo', name: 'Tibetan' }, { code: 'tr', name: 'Turkish' }, { code: 'tk', name: 'Turkmen' },
+  { code: 'uk', name: 'Ukrainian' }, { code: 'ur', name: 'Urdu' }, { code: 'uz', name: 'Uzbek' },
+  { code: 'vi', name: 'Vietnamese' }, { code: 'cy', name: 'Welsh' }, { code: 'yi', name: 'Yiddish' },
+  { code: 'yo', name: 'Yoruba' }
+];
+
+const LANGUAGE_MAP = new Map(LANGUAGES.map((lang) => [lang.code, lang.name]));
+const NAME_TO_CODE = new Map(LANGUAGES.map((lang) => [lang.name.toLowerCase(), lang.code]));
+
+const POST_TASKS = {
+  polish: {
+    label: 'Polish & punctuate',
+    instruction: 'Clean up punctuation, capitalization, filler words (um, uh, like), and false starts. Preserve the original language, meaning, and speaker intent. Do not summarize or omit substantive content. Return only the cleaned transcript.'
+  },
+  summarize: {
+    label: 'Summarize',
+    instruction: 'Create a concise, useful summary of the transcript as short bullet points. Preserve key facts, names, numbers, and decisions. Use the transcript’s language unless asked otherwise. Return only the summary.'
+  },
+  translate: {
+    label: 'Translate to English',
+    instruction: 'Translate the transcript into clear, natural English. Preserve names, numbers, and meaning. Return only the English translation.'
+  },
+  custom: { label: 'Custom instruction', instruction: '' }
+};
+
+const SYSTEM_PROMPT = 'You are a meticulous transcript editor. Follow the user’s task exactly. Output only the requested text, with no preamble, commentary, or markdown code fences. Never invent facts that are not present in the transcript.';
+
+/* --------------------------------------------------------------------------
+   2. DOM references
+   -------------------------------------------------------------------------- */
+const $ = (selector, root = document) => root.querySelector(selector);
+
+const els = {
+  themeToggle: $('#themeToggle'),
+  enginePillText: $('#enginePillText'),
+  keyTrigger: $('#keyTrigger'),
+  keyTriggerDot: $('#keyTriggerDot'),
+  keyTriggerLabel: $('#keyTriggerLabel'),
+
+  keyCard: $('#keyCard'),
+  keyCardDot: $('#keyCardDot'),
+  keyCardTitle: $('#keyCardTitle'),
+  keyCardText: $('#keyCardText'),
+  keyCardBtn: $('#keyCardBtn'),
+
+  transcriptionModelControl: $('#transcriptionModelControl'),
+  transcriptionModelHelp: $('#transcriptionModelHelp'),
+  postModelControl: $('#postModelControl'),
+  postModelHelp: $('#postModelHelp'),
+  postModelBadge: $('#postModelBadge'),
+
+  langCombo: $('#langCombo'),
+  langTrigger: $('#langTrigger'),
+  langValue: $('#langValue'),
+  langCodeBadge: $('#langCodeBadge'),
+  langPopover: $('#langPopover'),
+  langSearch: $('#langSearch'),
+  langList: $('#langList'),
+  langEmpty: $('#langEmpty'),
+  langResultsCount: $('#langResultsCount'),
+
+  dropzone: $('#dropzone'),
+  fileInput: $('#fileInput'),
+  fileChip: $('#fileChip'),
+  fileName: $('#fileName'),
+  fileMeta: $('#fileMeta'),
+  fileRemove: $('#fileRemove'),
+  audioPreviewWrap: $('#audioPreviewWrap'),
+  audioPreview: $('#audioPreview'),
+  recordPanel: $('#recordPanel'),
+  recordBtn: $('#recordBtn'),
+  stopBtn: $('#stopBtn'),
+  recordTimer: $('#recordTimer'),
+  recordStatus: $('#recordStatus'),
+  waveform: $('#waveform'),
+  promptInput: $('#promptInput'),
+  promptCount: $('#promptCount'),
+  baseUrlInput: $('#baseUrlInput'),
+  baseUrlReset: $('#baseUrlReset'),
+  transcribeBtn: $('#transcribeBtn'),
+  transcribeSpinner: $('#transcribeSpinner'),
+  transcribeLabel: $('#transcribeLabel'),
+  cancelTranscribeBtn: $('#cancelTranscribeBtn'),
+
+  transcriptCard: $('#transcriptCard'),
+  emptyState: $('#emptyState'),
+  skeleton: $('#skeleton'),
+  panelTranscript: $('#panelTranscript'),
+  panelEnhanced: $('#panelEnhanced'),
+  transcriptEditor: $('#transcriptEditor'),
+  enhancedEditor: $('#enhancedEditor'),
+  enhancedEmpty: $('#enhancedEmpty'),
+  tabTranscript: $('#tabTranscript'),
+  tabEnhanced: $('#tabEnhanced'),
+  tabEnhancedDot: $('#tabEnhancedDot'),
+  progressLine: $('#progressLine'),
+  metaRow: $('#metaRow'),
+  detectedLangBadge: $('#detectedLangBadge'),
+  durationMeta: $('#durationMeta'),
+  modelMeta: $('#modelMeta'),
+
+  segmentsDetails: $('#segmentsDetails'),
+  segmentsList: $('#segmentsList'),
+  segmentCount: $('#segmentCount'),
+
+  postTask: $('#postTask'),
+  reasoningEffort: $('#reasoningEffort'),
+  customInstructionWrap: $('#customInstructionWrap'),
+  customInstruction: $('#customInstruction'),
+  postRunBtn: $('#postRunBtn'),
+  postSpinner: $('#postSpinner'),
+  postRunLabel: $('#postRunLabel'),
+  postCancelBtn: $('#postCancelBtn'),
+
+  counts: $('#counts'),
+  copyBtn: $('#copyBtn'),
+  downloadBtn: $('#downloadBtn'),
+  downloadSrtBtn: $('#downloadSrtBtn'),
+  clearBtn: $('#clearBtn'),
+
+  keyDialog: $('#keyDialog'),
+  keyForm: $('#keyForm'),
+  keyInput: $('#keyInput'),
+  toggleKeyVisibility: $('#toggleKeyVisibility'),
+  rememberKey: $('#rememberKey'),
+  removeKeyBtn: $('#removeKeyBtn'),
+  keyDialogClose: $('#keyDialogClose'),
+
+  toastContainer: $('#toastContainer'),
+  statusLive: $('#statusLive')
+};
+
+/* --------------------------------------------------------------------------
+   3. State
+   -------------------------------------------------------------------------- */
+const state = {
+  apiKey: '',
+  rememberKey: true,
+  baseUrl: GEMINI_DEFAULT_BASE,
+
+  transcriptionModel: 'gemini-2.5-flash',
+  postModel: 'gemini-2.5-flash',
+  reasoningEffort: 'medium',
+  language: 'auto',
+
+  file: null,
+  audioUrl: '',
+  fileDuration: null,
+
+  isRecording: false,
+  recorder: null,
+  stream: null,
+  chunks: [],
+  recordMime: '',
+  recordStart: 0,
+  recordTimerId: 0,
+  recordFinalized: false,
+
+  audioCtx: null,
+  analyser: null,
+  waveData: null,
+  waveAccent: '#4285f4',
+  rafId: 0,
+
+  isTranscribing: false,
+  transcribeAbort: null,
+
+  isPostProcessing: false,
+  postAbort: null,
+
+  transcript: '',
+  enhanced: '',
+  segments: [],
+  detectedLanguage: '',
+  duration: null,
+  activeTab: 'transcript',
+  lastCleared: null
+};
+
+/* --------------------------------------------------------------------------
+   4. Utilities
+   -------------------------------------------------------------------------- */
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, index);
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatClock(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins >= 60) {
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return `${hours}:${String(remMins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatSrtTime(totalSeconds) {
+  const ms = Math.max(0, Math.round((Number(totalSeconds) || 0) * 1000));
+  const hours = Math.floor(ms / 3600000);
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  const millis = ms % 1000;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+}
+
+function wordCount(text) {
+  const trimmed = String(text || '').trim();
+  return trimmed ? trimmed.split(/\s+/u).length : 0;
+}
+
+function languageName(code) {
+  if (!code) return 'Unknown';
+  const lower = String(code).toLowerCase().split('-')[0];
+  return LANGUAGE_MAP.get(lower) || String(code).toUpperCase();
+}
+
+function normalizeLanguageCode(code, name) {
+  const lower = String(code || '').toLowerCase().split('-')[0];
+  if (lower && LANGUAGE_MAP.has(lower)) return lower;
+  const byName = NAME_TO_CODE.get(String(name || '').toLowerCase());
+  return byName || lower || '';
+}
+
+function sanitizeFilename(name) {
+  const base = String(name || 'transcript')
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return base || 'transcript';
+}
+
+function makeFilename(extension) {
+  const sourceName = state.file?.name || 'transcript';
+  const safe = sanitizeFilename(sourceName);
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `${safe}-${stamp}.${extension}`;
+}
+
+function announce(message) {
+  if (!els.statusLive) return;
+  els.statusLive.textContent = '';
+  window.setTimeout(() => { els.statusLive.textContent = message; }, 25);
+}
+
+function syncEditors() {
+  state.transcript = els.transcriptEditor.value;
+  state.enhanced = els.enhancedEditor.value;
+}
+
+function currentBaseUrl() {
+  let value = els.baseUrlInput.value.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(value)) value = GEMINI_DEFAULT_BASE;
+  return value;
+}
+
+/* --------------------------------------------------------------------------
+   5. Toasts
+   -------------------------------------------------------------------------- */
+function toast(message, type = 'info', options = {}) {
+  const node = document.createElement('div');
+  node.className = `toast toast-${type}`;
+  node.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  node.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = type === 'error' ? '!' : type === 'success' ? '✓' : type === 'warning' ? '!' : 'i';
+
+  const body = document.createElement('div');
+  body.className = 'toast-body';
+
+  const text = document.createElement('p');
+  text.className = 'toast-message';
+  text.textContent = String(message || 'Something happened.');
+  body.append(text);
+
+  if (options.action?.label && typeof options.action.onClick === 'function') {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'toast-action';
+    action.textContent = options.action.label;
+    action.addEventListener('click', () => { try { options.action.onClick(); } finally { dismiss(); } });
+    body.append(action);
+  }
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'toast-close';
+  close.setAttribute('aria-label', 'Dismiss notification');
+  close.textContent = '×';
+
+  node.append(icon, body, close);
+  els.toastContainer.append(node);
+
+  requestAnimationFrame(() => node.classList.add('is-visible'));
+
+  let timer = window.setTimeout(dismiss, options.duration ?? 5600);
+  node.addEventListener('mouseenter', () => window.clearTimeout(timer));
+  node.addEventListener('mouseleave', () => { timer = window.setTimeout(dismiss, 2200); });
+  close.addEventListener('click', dismiss);
+
+  function dismiss() {
+    window.clearTimeout(timer);
+    node.classList.remove('is-visible');
+    node.classList.add('is-leaving');
+    window.setTimeout(() => node.remove(), 260);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   6. Theme
+   -------------------------------------------------------------------------- */
+function setTheme(theme) {
+  const next = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem(THEME_STORAGE, next); } catch { /* ignore */ }
+  if (els.themeToggle) {
+    els.themeToggle.setAttribute('aria-label', next === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  drawIdleWave();
+}
+
+function initTheme() {
+  let saved = '';
+  try { saved = localStorage.getItem(THEME_STORAGE) || ''; } catch { /* ignore */ }
+  const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)')?.matches;
+  setTheme(saved || (prefersLight ? 'light' : 'dark'));
+}
+
+/* --------------------------------------------------------------------------
+   7. Preferences & API key
+   -------------------------------------------------------------------------- */
+function loadPreferences() {
+  try {
+    const raw = localStorage.getItem(PREFS_STORAGE);
+    if (!raw) return;
+    const prefs = JSON.parse(raw);
+    if (TRANS_MODELS.includes(prefs.transcriptionModel)) state.transcriptionModel = prefs.transcriptionModel;
+    if (POST_MODELS.includes(prefs.postModel)) state.postModel = prefs.postModel;
+    if (EFFORT_LEVELS.includes(prefs.reasoningEffort)) state.reasoningEffort = prefs.reasoningEffort;
+    if (typeof prefs.baseUrl === 'string' && /^https?:\/\//i.test(prefs.baseUrl)) {
+      state.baseUrl = prefs.baseUrl.replace(/\/+$/, '');
+    }
+  } catch { /* ignore */ }
+}
+
+function savePreferences() {
+  try {
+    localStorage.setItem(PREFS_STORAGE, JSON.stringify({
+      transcriptionModel: state.transcriptionModel,
+      postModel: state.postModel,
+      reasoningEffort: state.reasoningEffort,
+      baseUrl: currentBaseUrl()
+    }));
+  } catch { /* ignore */ }
+}
+
+function loadKey() {
+  try {
+    const stored = sessionStorage.getItem(KEY_STORAGE);
+    if (stored) { state.apiKey = stored; state.rememberKey = true; }
+  } catch { /* ignore */ }
+}
+
+function maskKey(key) {
+  if (!key) return '';
+  if (key.length <= 10) return '••••••••';
+  return `${key.slice(0, 5)}••••${key.slice(-4)}`;
+}
+
+function updateKeyUI() {
+  const connected = Boolean(state.apiKey);
+  els.keyCard.classList.toggle('needs-key', !connected);
+  els.keyCardDot.classList.toggle('is-on', connected);
+  els.keyTriggerDot.classList.toggle('is-on', connected);
+  els.keyTrigger.classList.toggle('is-connected', connected);
+
+  els.keyCardTitle.textContent = connected ? 'Gemini connected' : 'Connect your Gemini key';
+  els.keyCardText.textContent = connected
+    ? `Key ${maskKey(state.apiKey)} · stored for this tab only.`
+    : 'Paste a free AI Studio key to start transcribing. It never touches our servers.';
+  els.keyCardBtn.textContent = connected ? 'Manage key' : 'Add API key';
+  els.keyTriggerLabel.textContent = connected ? 'Key active' : 'Add key';
+  els.removeKeyBtn.hidden = !connected;
+}
+
+function openKeyDialog() {
+  if (!els.keyDialog.open) els.keyDialog.showModal();
+  els.keyInput.value = '';
+  els.rememberKey.checked = state.rememberKey;
+  els.keyInput.type = 'password';
+  els.toggleKeyVisibility.textContent = 'Show';
+  els.toggleKeyVisibility.setAttribute('aria-pressed', 'false');
+  window.setTimeout(() => els.keyInput.focus(), 40);
+}
+
+function saveKey(event) {
+  event.preventDefault();
+  const value = els.keyInput.value.trim();
+
+  if (!value) {
+    if (state.apiKey) { els.keyDialog.close(); return; }
+    toast('Enter a Google AI Studio API key first.', 'error');
+    els.keyInput.focus();
+    return;
+  }
+
+  if (!value.startsWith('AIza') || value.length < 30) {
+    toast('That does not look like a Google AI Studio key. Keys start with “AIza”.', 'warning');
+    els.keyInput.focus();
+    return;
+  }
+
+  state.apiKey = value;
+  state.rememberKey = els.rememberKey.checked;
+
+  try {
+    if (state.rememberKey) sessionStorage.setItem(KEY_STORAGE, value);
+    else sessionStorage.removeItem(KEY_STORAGE);
+  } catch { /* ignore */ }
+
+  updateKeyUI();
+  els.keyDialog.close();
+  toast('Gemini API key saved for this tab.', 'success');
+}
+
+function removeKey() {
+  state.apiKey = '';
+  try { sessionStorage.removeItem(KEY_STORAGE); } catch { /* ignore */ }
+  els.keyInput.value = '';
+  updateKeyUI();
+  toast('API key removed from this tab.', 'info');
+}
+
+/* --------------------------------------------------------------------------
+   8. Language combobox
+   -------------------------------------------------------------------------- */
+const langUI = { open: false, options: [], activeIndex: 0 };
+
+function applyLanguageUI(code) {
+  state.language = code;
+  els.langValue.textContent = code === 'auto' ? 'Auto-detect' : languageName(code);
+  els.langCodeBadge.textContent = code === 'auto' ? 'AUTO' : String(code).toUpperCase();
+}
+
+function renderLanguageOptions(query = '') {
+  const normalized = query.trim().toLowerCase();
+  const options = [
+    { code: 'auto', name: 'Auto-detect', hint: 'Let Gemini identify the language' },
+    ...LANGUAGES.filter((lang) => {
+      if (!normalized) return true;
+      return lang.name.toLowerCase().includes(normalized) || lang.code.includes(normalized);
+    })
+  ];
+
+  langUI.options = options;
+  els.langList.replaceChildren();
+  els.langEmpty.hidden = options.length > 0;
+
+  options.forEach((option, index) => {
+    const li = document.createElement('li');
+    li.id = `lang-option-${option.code}`;
+    li.className = 'combo-option';
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(option.code === state.language));
+    li.dataset.code = option.code;
+    li.dataset.index = String(index);
+
+    const text = document.createElement('span');
+    text.className = 'option-text';
+    const name = document.createElement('span');
+    name.className = 'option-name';
+    name.textContent = option.name;
+    text.append(name);
+    if (option.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'option-hint';
+      hint.textContent = option.hint;
+      text.append(hint);
+    }
+
+    const code = document.createElement('span');
+    code.className = 'option-code';
+    code.textContent = option.code === 'auto' ? 'AUTO' : option.code.toUpperCase();
+
+    li.append(text, code);
+    if (option.code === state.language) {
+      const check = document.createElement('span');
+      check.className = 'option-check';
+      check.textContent = '✓';
+      li.append(check);
+    }
+
+    li.addEventListener('click', () => selectLanguage(option.code));
+    els.langList.append(li);
+  });
+
+  const selectedIndex = options.findIndex((option) => option.code === state.language);
+  setActiveLanguageOption(selectedIndex >= 0 ? selectedIndex : 0, false);
+  els.langResultsCount.textContent = `${options.length} language${options.length === 1 ? '' : 's'} found`;
+}
+
+function setActiveLanguageOption(index, shouldScroll = true) {
+  if (!langUI.options.length) { els.langSearch.removeAttribute('aria-activedescendant'); return; }
+  const bounded = Math.max(0, Math.min(index, langUI.options.length - 1));
+  langUI.activeIndex = bounded;
+  Array.from(els.langList.children).forEach((li, itemIndex) => {
+    li.classList.toggle('is-active', itemIndex === bounded);
+  });
+  const active = els.langList.children[bounded];
+  if (active) {
+    els.langSearch.setAttribute('aria-activedescendant', active.id);
+    if (shouldScroll) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function selectLanguage(code) {
+  applyLanguageUI(code);
+  closeLanguageMenu();
+  els.langTrigger.focus();
+}
+
+function openLanguageMenu() {
+  if (langUI.open) return;
+  langUI.open = true;
+  els.langPopover.hidden = false;
+  els.langTrigger.setAttribute('aria-expanded', 'true');
+  els.langSearch.setAttribute('aria-expanded', 'true');
+  els.langSearch.value = '';
+  renderLanguageOptions('');
+  document.addEventListener('pointerdown', onDocumentPointerDown, true);
+  requestAnimationFrame(() => els.langSearch.focus());
+}
+
+function closeLanguageMenu() {
+  if (!langUI.open) return;
+  langUI.open = false;
+  els.langPopover.hidden = true;
+  els.langTrigger.setAttribute('aria-expanded', 'false');
+  els.langSearch.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+}
+
+function onDocumentPointerDown(event) {
+  if (!els.langCombo.contains(event.target)) closeLanguageMenu();
+}
+
+function initLanguageCombo() {
+  applyLanguageUI(state.language);
+  renderLanguageOptions('');
+
+  els.langTrigger.addEventListener('click', () => {
+    if (langUI.open) closeLanguageMenu();
+    else openLanguageMenu();
+  });
+
+  els.langTrigger.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openLanguageMenu();
+    }
+  });
+
+  els.langSearch.addEventListener('input', () => { renderLanguageOptions(els.langSearch.value); });
+
+  els.langSearch.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); setActiveLanguageOption(langUI.activeIndex + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setActiveLanguageOption(langUI.activeIndex - 1); }
+    else if (event.key === 'Home') { event.preventDefault(); setActiveLanguageOption(0); }
+    else if (event.key === 'End') { event.preventDefault(); setActiveLanguageOption(langUI.options.length - 1); }
+    else if (event.key === 'Enter') {
+      event.preventDefault();
+      const option = langUI.options[langUI.activeIndex];
+      if (option) selectLanguage(option.code);
+    } else if (event.key === 'Escape') { event.preventDefault(); closeLanguageMenu(); els.langTrigger.focus(); }
+    else if (event.key === 'Tab') { closeLanguageMenu(); }
+  });
+}
+
+/* --------------------------------------------------------------------------
+   9. Segmented controls
+   -------------------------------------------------------------------------- */
+function setupSegmented(container, initialValue, onChange) {
+  const buttons = Array.from(container.querySelectorAll('[role="radio"]'));
+  function apply(value, focus = false) {
+    buttons.forEach((button) => {
+      const checked = button.dataset.value === value;
+      button.setAttribute('aria-checked', String(checked));
+      button.tabIndex = checked ? 0 : -1;
+      if (checked && focus) button.focus();
+    });
+  }
+  apply(initialValue);
+
+  buttons.forEach((button, index) => {
+    button.addEventListener('click', () => { apply(button.dataset.value); onChange(button.dataset.value); });
+    button.addEventListener('keydown', (event) => {
+      let nextIndex = null;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % buttons.length;
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + buttons.length) % buttons.length;
+      else if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = buttons.length - 1;
+      if (nextIndex !== null) {
+        event.preventDefault();
+        const next = buttons[nextIndex];
+        apply(next.dataset.value, true);
+        onChange(next.dataset.value);
+      }
+    });
+  });
+
+  return { apply };
+}
+
+function updateTranscriptionModelUI() {
+  const flash = state.transcriptionModel.endsWith('flash');
+  els.transcriptionModelHelp.textContent = flash
+    ? 'Fastest · great for clear audio and long files.'
+    : 'Highest accuracy · best for accents, noise, and tricky audio.';
+  els.enginePillText.textContent = flash ? 'Gemini Flash' : 'Gemini Pro';
+  els.modelMeta.textContent = flash ? 'Flash' : 'Pro';
+}
+
+function updatePostModelUI() {
+  const pro = state.postModel.endsWith('pro');
+  els.postModelHelp.textContent = pro
+    ? 'Deeper reasoning · better for complex summaries and nuance.'
+    : 'Fast and lightweight · ideal for cleanup and quick summaries.';
+  els.postModelBadge.textContent = state.postModel.replace('gemini-', '');
+}
+
+/* --------------------------------------------------------------------------
+   10. File handling
+   -------------------------------------------------------------------------- */
+function handleFile(file) {
+  if (!file) return;
+
+  const extension = (file.name.split('.').pop() || '').toLowerCase();
+  const mime = file.type || '';
+  const supportedExtension = SUPPORTED_EXTENSIONS.includes(extension);
+  const isAudio = mime.startsWith('audio/');
+  const isVideo = mime.startsWith('video/');
+
+  if (!supportedExtension && !isAudio && !isVideo) {
+    toast('Unsupported file type. Use FLAC, MP3, WAV, M4A, OGG, AIFF, MP4, or WEBM.', 'error');
+    return;
+  }
+  if (file.size <= 0) {
+    toast('That file is empty. Choose an audio file with content.', 'error');
+    return;
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    toast(`This file is ${formatBytes(file.size)}. Scribe caps uploads at 100 MB.`, 'error', { duration: 8000 });
+    return;
+  }
+
+  setFile(file);
+  toast(`Audio ready · ${file.name}`, 'success', { duration: 3200 });
+  announce(`Audio ready: ${file.name}`);
+}
+
+function setFile(file) {
+  if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+  state.file = file;
+  state.fileDuration = null;
+  state.audioUrl = URL.createObjectURL(file);
+
+  els.fileChip.hidden = false;
+  els.audioPreviewWrap.hidden = false;
+  els.fileName.textContent = file.name;
+
+  const extension = (file.name.split('.').pop() || 'audio').toUpperCase();
+  els.fileMeta.textContent = `${formatBytes(file.size)} · ${extension}`;
+
+  els.audioPreview.src = state.audioUrl;
+  els.audioPreview.load();
+
+  els.dropzone.classList.add('has-file');
+  updateActionAvailability();
+}
+
+function clearFile() {
+  if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+  state.audioUrl = '';
+  state.file = null;
+  state.fileDuration = null;
+
+  els.fileChip.hidden = true;
+  els.audioPreviewWrap.hidden = true;
+  els.audioPreview.removeAttribute('src');
+  els.audioPreview.load();
+  els.dropzone.classList.remove('has-file');
+  els.fileInput.value = '';
+  updateActionAvailability();
+}
+
+/* --------------------------------------------------------------------------
+   11. Recording & waveform
+   -------------------------------------------------------------------------- */
+function pickMimeType() {
+  if (!window.MediaRecorder) return '';
+  const candidates = [
+    'audio/webm;codecs=opus', 'audio/webm',
+    'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mp4;codecs=mp4a.40.2'
+  ];
+  return candidates.find((type) => {
+    try { return MediaRecorder.isTypeSupported(type); } catch { return false; }
+  }) || '';
+}
+
+async function startRecording() {
+  if (state.isRecording) return;
+  if (state.isTranscribing) { toast('Wait for the current transcription to finish before recording.', 'info'); return; }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('Recording needs a secure context (HTTPS or localhost) and a browser with microphone support.', 'error', { duration: 8000 });
+    return;
+  }
+  if (typeof window.MediaRecorder === 'undefined') {
+    toast('This browser does not support MediaRecorder. Upload an audio file instead.', 'error');
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+    });
+  } catch (error) {
+    const name = error?.name || '';
+    let message = 'Could not access the microphone.';
+    if (name === 'NotAllowedError' || name === 'SecurityError') message = 'Microphone permission was denied. Allow mic access in your browser and try again.';
+    else if (name === 'NotFoundError') message = 'No microphone was found. Connect one or upload an audio file.';
+    else if (name === 'NotReadableError') message = 'The microphone is busy in another app. Close it and retry.';
+    toast(message, 'error', { duration: 7500 });
+    return;
+  }
+
+  const mimeType = pickMimeType();
+  let recorder;
+  try {
+    recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  } catch {
+    stream.getTracks().forEach((track) => track.stop());
+    toast('Could not start the recorder in this browser. Try uploading a file instead.', 'error');
+    return;
+  }
+
+  state.stream = stream;
+  state.recorder = recorder;
+  state.chunks = [];
+  state.recordMime = mimeType || recorder.mimeType || 'audio/webm';
+  state.recordFinalized = false;
+
+  recorder.addEventListener('dataavailable', (event) => {
+    if (event.data && event.data.size > 0) state.chunks.push(event.data);
+  });
+  recorder.addEventListener('stop', () => finalizeRecording(recorder));
+  recorder.addEventListener('error', (event) => {
+    toast(`Recording error: ${event.error?.message || 'unknown error'}`, 'error');
+    stopRecording();
+  });
+
+  try { recorder.start(250); }
+  catch {
+    state.recorder = null;
+    state.stream = null;
+    stream.getTracks().forEach((track) => track.stop());
+    toast('The recorder failed to start. Try again or upload a file.', 'error');
+    return;
+  }
+
+  state.isRecording = true;
+  state.recordStart = Date.now();
+  els.recordTimer.textContent = '00:00';
+  els.recordPanel.classList.add('is-recording');
+  startRecordingTimer();
+  updateRecordingUI();
+  setupAnalyser(stream);
+
+  toast('Recording started. Tap the red button again to stop.', 'info', { duration: 2800 });
+  announce('Recording started');
+}
+
+function stopRecording() {
+  if (!state.isRecording) return;
+  state.isRecording = false;
+  stopRecordingTimer();
+  updateRecordingUI();
+
+  const recorder = state.recorder;
+  if (recorder && recorder.state !== 'inactive') {
+    try { recorder.stop(); } catch { finalizeRecording(recorder); }
+  } else {
+    finalizeRecording(recorder);
+  }
+}
+
+function finalizeRecording(recorder) {
+  if (state.recordFinalized) return;
+  state.recordFinalized = true;
+
+  const mime = recorder?.mimeType || state.recordMime || 'audio/webm';
+  const blob = new Blob(state.chunks, { type: mime });
+  const size = blob.size;
+
+  state.chunks = [];
+  state.recorder = null;
+  cleanupAudioGraph();
+
+  if (size < 1200) {
+    toast('That recording was too short. Try again and speak for a few seconds.', 'warning');
+    return;
+  }
+
+  const extension = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19);
+  const file = new File([blob], `recording-${stamp}.${extension}`, { type: mime });
+
+  setFile(file);
+  toast(`Recording ready · ${formatBytes(size)}`, 'success');
+  announce('Recording ready');
+}
+
+function updateRecordingUI() {
+  els.recordBtn.classList.toggle('is-recording', state.isRecording);
+  els.recordBtn.setAttribute('aria-label', state.isRecording ? 'Stop recording' : 'Start recording');
+  els.recordBtn.setAttribute('aria-pressed', String(state.isRecording));
+  els.stopBtn.hidden = !state.isRecording;
+  els.recordStatus.textContent = state.isRecording ? 'Recording · tap to stop' : 'Tap to record';
+  els.recordPanel.classList.toggle('is-recording', state.isRecording);
+  if (!state.isRecording) els.recordTimer.textContent = '00:00';
+}
+
+function startRecordingTimer() {
+  stopRecordingTimer();
+  state.recordTimerId = window.setInterval(() => {
+    if (!state.isRecording) return;
+    const elapsed = (Date.now() - state.recordStart) / 1000;
+    els.recordTimer.textContent = formatClock(elapsed);
+    if (elapsed >= MAX_RECORD_SECONDS) {
+      stopRecording();
+      toast('Recording stopped at the 10-minute limit.', 'info');
+    }
+  }, 250);
+}
+
+function stopRecordingTimer() {
+  if (state.recordTimerId) { window.clearInterval(state.recordTimerId); state.recordTimerId = 0; }
+}
+
+/* ---------------------------- Waveform ----------------------------------- */
+function setupAnalyser(stream) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  try {
+    state.audioCtx = new AudioCtx();
+    if (state.audioCtx.state === 'suspended') state.audioCtx.resume().catch(() => {});
+    const source = state.audioCtx.createMediaStreamSource(stream);
+    const analyser = state.audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.76;
+    source.connect(analyser);
+    state.analyser = analyser;
+    state.waveData = new Uint8Array(analyser.fftSize);
+    state.waveAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4285f4';
+    cancelAnimationFrame(state.rafId);
+    state.rafId = requestAnimationFrame(drawRecordingFrame);
+  } catch { /* decorative */ }
+}
+
+function cleanupAudioGraph() {
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = 0; }
+  if (state.stream) {
+    state.stream.getTracks().forEach((track) => { try { track.stop(); } catch { /* ignore */ } });
+  }
+  state.stream = null;
+  if (state.audioCtx) { state.audioCtx.close().catch(() => {}); state.audioCtx = null; }
+  state.analyser = null;
+  state.waveData = null;
+  drawIdleWave();
+}
+
+function initWaveform() {
+  const canvas = els.waveform;
+  if (!canvas) return;
+  const resize = () => { if (!state.isRecording) drawIdleWave(); };
+  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
+  else window.addEventListener('resize', resize);
+  drawIdleWave();
+}
+
+function drawIdleWave() {
+  const canvas = els.waveform;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssWidth = Math.max(1, canvas.clientWidth || 400);
+  const cssHeight = Math.max(1, canvas.clientHeight || 72);
+  if (canvas.width !== Math.floor(cssWidth * dpr) || canvas.height !== Math.floor(cssHeight * dpr)) {
+    canvas.width = Math.floor(cssWidth * dpr);
+    canvas.height = Math.floor(cssHeight * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const faint = getComputedStyle(document.documentElement).getPropertyValue('--faint').trim() || 'rgba(255,255,255,0.2)';
+  const bars = 56;
+  const gap = 3;
+  const barWidth = Math.max(2, (cssWidth - gap * (bars - 1)) / bars);
+  const mid = cssHeight / 2;
+
+  ctx.fillStyle = faint;
+  ctx.globalAlpha = 0.55;
+  for (let i = 0; i < bars; i += 1) {
+    const t = i / (bars - 1);
+    const amplitude = 0.08 + 0.13 * Math.abs(Math.sin(t * Math.PI * 3 + 0.7));
+    const height = Math.max(3, amplitude * cssHeight);
+    const x = i * (barWidth + gap);
+    ctx.fillRect(x, mid - height / 2, barWidth, height);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawRecordingFrame() {
+  if (!state.isRecording || !state.analyser || !state.waveData) { drawIdleWave(); return; }
+  const canvas = els.waveform;
+  const ctx = canvas?.getContext('2d');
+  if (!canvas || !ctx) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssWidth = Math.max(1, canvas.clientWidth || 400);
+  const cssHeight = Math.max(1, canvas.clientHeight || 72);
+  if (canvas.width !== Math.floor(cssWidth * dpr) || canvas.height !== Math.floor(cssHeight * dpr)) {
+    canvas.width = Math.floor(cssWidth * dpr);
+    canvas.height = Math.floor(cssHeight * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  state.analyser.getByteTimeDomainData(state.waveData);
+
+  const bars = 56;
+  const gap = 3;
+  const barWidth = Math.max(2, (cssWidth - gap * (bars - 1)) / bars);
+  const mid = cssHeight / 2;
+  const step = Math.max(1, Math.floor(state.waveData.length / bars));
+
+  ctx.fillStyle = state.waveAccent;
+  ctx.globalAlpha = 0.9;
+  for (let i = 0; i < bars; i += 1) {
+    let sum = 0;
+    const start = i * step;
+    for (let j = 0; j < step; j += 1) sum += Math.abs((state.waveData[start + j] || 128) - 128);
+    const amplitude = sum / step / 128;
+    const height = Math.max(3, Math.min(cssHeight, amplitude * cssHeight * 2.6));
+    const x = i * (barWidth + gap);
+    ctx.fillRect(x, mid - height / 2, barWidth, height);
+  }
+  ctx.globalAlpha = 1;
+  state.rafId = requestAnimationFrame(drawRecordingFrame);
+}
+
+/* --------------------------------------------------------------------------
+   12. Gemini helpers — base64, Files API
+   -------------------------------------------------------------------------- */
+function cleanMimeType(mime) {
+  return String(mime || '').split(';')[0].trim() || 'audio/webm';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Could not read the audio file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadToFilesAPI(file, apiKey, signal) {
+  const mime = cleanMimeType(file.type);
+  const size = file.size;
+
+  // Step 1 — start a resumable upload.
+  const startRes = await fetch(`${FILES_UPLOAD_BASE}/files`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(size),
+      'X-Goog-Upload-Header-Content-Type': mime,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ file: { display_name: file.name } }),
+    signal
+  });
+
+  if (!startRes.ok) throw await readApiError(startRes);
+
+  const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  if (!uploadUrl) throw new Error('Files API did not return an upload URL.');
+
+  // Step 2 — upload the bytes and finalize.
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(size),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize'
+    },
+    body: file,
+    signal
+  });
+
+  if (!uploadRes.ok) throw await readApiError(uploadRes);
+
+  const uploadJson = await uploadRes.json();
+  const fileInfo = uploadJson?.file;
+  if (!fileInfo?.uri || !fileInfo?.name) {
+    throw new Error('Files API returned an unexpected response.');
+  }
+
+  // Step 3 — poll until the file is ACTIVE.
+  const pollBase = fileInfo.name.replace(/^files\//, '');
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const pollRes = await fetch(
+      `${GEMINI_DEFAULT_BASE}/files/${pollBase}`,
+      { headers: { 'x-goog-api-key': apiKey }, signal }
+    );
+    if (!pollRes.ok) throw await readApiError(pollRes);
+    const status = await pollRes.json();
+    const stateName = status?.state;
+    if (stateName === 'ACTIVE') {
+      return { fileUri: status.uri || fileInfo.uri, mimeType: status.mimeType || mime };
+    }
+    if (stateName === 'FAILED') throw new Error('Google could not process the uploaded file.');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  throw new Error('Timed out waiting for the uploaded file to become ready.');
+}
+
+/* --------------------------------------------------------------------------
+   13. Transcription
+   -------------------------------------------------------------------------- */
+function setTranscribing(active) {
+  state.isTranscribing = active;
+  els.transcribeSpinner.hidden = !active;
+  els.transcribeLabel.textContent = active ? 'Transcribing…' : 'Transcribe audio';
+  els.cancelTranscribeBtn.hidden = !active;
+  els.progressLine.hidden = !active;
+  els.transcriptCard.setAttribute('aria-busy', String(active));
+  els.recordBtn.disabled = active;
+  els.dropzone.setAttribute('aria-disabled', String(active));
+
+  renderTranscript();
+  updateActionAvailability();
+
+  if (active) announce('Transcribing audio');
+}
+
+function buildTranscriptionPrompt(languageCode, context) {
+  const languageHint = languageCode === 'auto'
+    ? 'Detect the spoken language automatically.'
+    : `The audio is primarily in ${languageName(languageCode)} (${languageCode}).`;
+
+  return [
+    'Transcribe the following audio verbatim.',
+    languageHint,
+    context ? `Context provided by the user: ${context}` : '',
+    'Return ONLY a JSON object with keys: text (full transcript), language (ISO 639-1 code), language_name (English name), and optionally segments (array of {start, end, text} timestamps in seconds). No markdown fences, no commentary.'
+  ].filter(Boolean).join('\n');
+}
+
+async function transcribe() {
+  if (state.isTranscribing) return;
+  if (state.isRecording) { toast('Stop the recording before transcribing.', 'info'); return; }
+  if (!state.apiKey) { openKeyDialog(); toast('Add a Gemini API key to start transcribing.', 'info'); return; }
+  if (!state.file) { toast('Choose an audio file or record something first.', 'error'); return; }
+
+  const controller = new AbortController();
+  state.transcribeAbort = controller;
+  const startedAt = performance.now();
+  setTranscribing(true);
+
+  try {
+    const apiKey = state.apiKey;
+    const file = state.file;
+
+    // Decide transport: inline base64 under threshold, Files API above.
+    let audioPart;
+    if (file.size <= INLINE_MAX_BYTES) {
+      const base64 = await fileToBase64(file);
+      audioPart = {
+        inline_data: {
+          mime_type: cleanMimeType(file.type),
+          data: base64
+        }
+      };
+    } else {
+      const { fileUri, mimeType } = await uploadToFilesAPI(file, apiKey, controller.signal);
+      audioPart = {
+        file_data: {
+          mime_type: mimeType,
+          file_uri: fileUri
+        }
+      };
+    }
+
+    const prompt = buildTranscriptionPrompt(state.language, els.promptInput.value.trim());
+
+    const body = {
+      contents: [{
+        role: 'user',
+        parts: [audioPart, { text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            text: { type: 'STRING', description: 'The full verbatim transcript, exactly as spoken.' },
+            language: { type: 'STRING', description: 'ISO 639-1 code of the detected language.' },
+            language_name: { type: 'STRING', description: 'English name of the detected language.' },
+            segments: {
+              type: 'ARRAY',
+              description: 'Optional timestamped segments.',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  start: { type: 'NUMBER', description: 'Start time in seconds.' },
+                  end: { type: 'NUMBER', description: 'End time in seconds.' },
+                  text: { type: 'STRING' }
+                },
+                required: ['start', 'end', 'text']
+              }
+            }
+          },
+          required: ['text', 'language', 'language_name']
+        }
+      }
+    };
+
+    const response = await fetch(
+      `${currentBaseUrl()}/models/${state.transcriptionModel}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) throw await readApiError(response);
+
+    const data = await response.json();
+    const parts = data?.candidates?.[0]?.content?.parts;
+    if (!Array.isArray(parts) || !parts.length) {
+      throw new Error('Gemini returned an empty response. Try again or pick a different model.');
+    }
+
+    let raw = '';
+    for (const part of parts) {
+      if (typeof part.text === 'string' && !part.thought) raw += part.text;
+    }
+
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { /* fall through */ }
+
+    if (!parsed || typeof parsed !== 'object') {
+      parsed = { text: raw.trim(), language: '', language_name: '' };
+    }
+
+    const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+    if (!text) {
+      toast('No speech was detected in that audio. Try a clearer clip.', 'warning');
+      return;
+    }
+
+    const segments = Array.isArray(parsed.segments)
+      ? parsed.segments
+          .filter((s) => s && typeof s === 'object')
+          .map((s) => ({
+            start: Number(s.start),
+            end: Number(s.end),
+            text: String(s.text || '').trim()
+          }))
+          .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end))
+      : [];
+
+    state.transcript = text;
+    state.enhanced = '';
+    state.segments = segments;
+    state.detectedLanguage = normalizeLanguageCode(parsed.language, parsed.language_name);
+    state.duration = segments.length ? Number(segments[segments.length - 1].end) : null;
+
+    setActiveTab('transcript');
+    renderTranscript();
+    renderEnhanced();
+    renderSegments();
+    updateMeta();
+
+    const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
+    toast(`Transcription ready in ${elapsed}s.`, 'success');
+    announce('Transcription ready');
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      toast('Transcription cancelled.', 'info');
+    } else {
+      const message = humanError(error);
+      toast(message, 'error', {
+        duration: 9000,
+        action: error?.status === 400 || error?.status === 401
+          ? { label: 'Update key', onClick: openKeyDialog }
+          : undefined
+      });
+      announce(message);
+    }
+  } finally {
+    if (state.transcribeAbort === controller) state.transcribeAbort = null;
+    setTranscribing(false);
+  }
+}
+
+function cancelTranscription() { state.transcribeAbort?.abort(); }
+
+/* --------------------------------------------------------------------------
+   14. Rendering
+   -------------------------------------------------------------------------- */
+function renderTranscript() {
+  const hasText = Boolean(state.transcript.trim());
+  els.transcriptEditor.value = state.transcript;
+  els.transcriptEditor.hidden = !hasText;
+  els.emptyState.hidden = hasText || state.isTranscribing;
+  els.skeleton.hidden = !state.isTranscribing || hasText;
+  updateCounts();
+  updateActionAvailability();
+}
+
+function renderEnhanced() {
+  const hasText = Boolean(state.enhanced.trim());
+  els.enhancedEditor.value = state.enhanced;
+  els.enhancedEditor.hidden = !hasText && !state.isPostProcessing;
+  els.enhancedEmpty.hidden = hasText || state.isPostProcessing;
+  els.tabEnhancedDot.hidden = !hasText;
+  updateCounts();
+  updateActionAvailability();
+}
+
+function renderSegments() {
+  els.segmentsList.replaceChildren();
+  els.segmentsDetails.hidden = state.segments.length === 0;
+  if (!state.segments.length) { els.segmentCount.textContent = ''; return; }
+
+  els.segmentCount.textContent = `${state.segments.length} segment${state.segments.length === 1 ? '' : 's'}`;
+
+  state.segments.forEach((segment) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'segment-row';
+    row.setAttribute('aria-label', `Jump to ${formatClock(segment.start)}: ${segment.text.slice(0, 90)}`);
+
+    const time = document.createElement('span');
+    time.className = 'segment-time';
+    time.textContent = formatClock(segment.start);
+
+    const text = document.createElement('span');
+    text.className = 'segment-text';
+    text.textContent = segment.text;
+
+    const confidence = document.createElement('span');
+    confidence.className = 'segment-confidence';
+    confidence.hidden = true;
+
+    row.append(time, text, confidence);
+    row.addEventListener('click', () => seekTo(segment.start));
+    els.segmentsList.append(row);
+  });
+}
+
+function seekTo(seconds) {
+  if (!state.audioUrl) return;
+  try {
+    els.audioPreview.currentTime = Math.max(0, seconds);
+    els.audioPreview.play().catch(() => {});
+  } catch { /* ignore */ }
+}
+
+function updateMeta() {
+  const hasMeta = Boolean(state.detectedLanguage) || state.duration != null;
+  els.metaRow.hidden = !hasMeta;
+  els.detectedLangBadge.textContent = state.detectedLanguage
+    ? `${languageName(state.detectedLanguage)} · ${state.detectedLanguage}`
+    : 'Language auto';
+  els.durationMeta.textContent = state.duration != null ? formatClock(state.duration) : '';
+  els.modelMeta.textContent = state.transcriptionModel.endsWith('flash') ? 'Flash' : 'Pro';
+}
+
+function updateCounts() {
+  const text = state.activeTab === 'transcript' ? state.transcript : state.enhanced;
+  const words = wordCount(text);
+  els.counts.textContent = `${words.toLocaleString()} word${words === 1 ? '' : 's'} · ${text.length.toLocaleString()} character${text.length === 1 ? '' : 's'}`;
+}
+
+function updateActionAvailability() {
+  const hasTranscript = Boolean(state.transcript.trim());
+  const hasEnhanced = Boolean(state.enhanced.trim());
+  const activeHasText = state.activeTab === 'transcript' ? hasTranscript : hasEnhanced;
+
+  els.copyBtn.disabled = !activeHasText;
+  els.downloadBtn.disabled = !activeHasText;
+  els.clearBtn.disabled = !hasTranscript && !hasEnhanced;
+  els.downloadSrtBtn.hidden = state.segments.length === 0;
+  els.postRunBtn.disabled = state.isPostProcessing || !hasTranscript;
+  els.transcribeBtn.disabled = state.isTranscribing || state.isRecording;
+  els.recordBtn.disabled = state.isTranscribing;
+}
+
+/* --------------------------------------------------------------------------
+   15. Tabs, copy, download, clear
+   -------------------------------------------------------------------------- */
+function setActiveTab(tab) {
+  const next = tab === 'enhanced' ? 'enhanced' : 'transcript';
+  state.activeTab = next;
+  const isTranscript = next === 'transcript';
+
+  els.tabTranscript.setAttribute('aria-selected', String(isTranscript));
+  els.tabEnhanced.setAttribute('aria-selected', String(!isTranscript));
+  els.tabTranscript.tabIndex = isTranscript ? 0 : -1;
+  els.tabEnhanced.tabIndex = isTranscript ? -1 : 0;
+  els.panelTranscript.hidden = !isTranscript;
+  els.panelEnhanced.hidden = isTranscript;
+
+  updateCounts();
+  updateActionAvailability();
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.top = '-1000px';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  const success = document.execCommand('copy');
+  area.remove();
+  if (!success) throw new Error('The copy command was rejected by the browser.');
+}
+
+async function copyActive() {
+  syncEditors();
+  const text = state.activeTab === 'transcript' ? state.transcript : state.enhanced;
+  if (!text.trim()) { toast('Nothing to copy yet.', 'info'); return; }
+  try { await copyText(text); toast('Copied to clipboard.', 'success'); }
+  catch { toast('Could not copy. Select the text manually and try again.', 'error'); }
+}
+
+function downloadBlob(content, filename, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function downloadActive() {
+  syncEditors();
+  const text = state.activeTab === 'transcript' ? state.transcript : state.enhanced;
+  if (!text.trim()) { toast('Nothing to download yet.', 'info'); return; }
+  downloadBlob(text, makeFilename('txt'));
+  toast('Downloaded .txt', 'success');
+}
+
+function toSrt(segments) {
+  return segments.map((segment, index) => {
+    const start = formatSrtTime(segment.start);
+    const end = formatSrtTime(segment.end);
+    return `${index + 1}\n${start} --> ${end}\n${segment.text}\n`;
+  }).join('\n');
+}
+
+function downloadSrt() {
+  if (!state.segments.length) { toast('No timestamped segments are available.', 'info'); return; }
+  downloadBlob(toSrt(state.segments), makeFilename('srt'), 'application/x-subrip;charset=utf-8');
+  toast('Downloaded .srt', 'success');
+}
+
+function clearAll() {
+  if (!state.transcript.trim() && !state.enhanced.trim()) return;
+  syncEditors();
+  state.lastCleared = {
+    transcript: state.transcript,
+    enhanced: state.enhanced,
+    segments: state.segments.slice(),
+    detectedLanguage: state.detectedLanguage,
+    duration: state.duration
+  };
+  state.transcript = '';
+  state.enhanced = '';
+  state.segments = [];
+  state.detectedLanguage = '';
+  state.duration = null;
+
+  setActiveTab('transcript');
+  renderTranscript();
+  renderEnhanced();
+  renderSegments();
+  updateMeta();
+
+  toast('Transcript cleared.', 'info', { action: { label: 'Undo', onClick: restoreCleared } });
+}
+
+function restoreCleared() {
+  if (!state.lastCleared) return;
+  state.transcript = state.lastCleared.transcript;
+  state.enhanced = state.lastCleared.enhanced;
+  state.segments = state.lastCleared.segments;
+  state.detectedLanguage = state.lastCleared.detectedLanguage;
+  state.duration = state.lastCleared.duration;
+  state.lastCleared = null;
+
+  setActiveTab('transcript');
+  renderTranscript();
+  renderEnhanced();
+  renderSegments();
+  updateMeta();
+  toast('Transcript restored.', 'success');
+}
+
+/* --------------------------------------------------------------------------
+   16. Post-processing (streaming)
+   -------------------------------------------------------------------------- */
+function setPostProcessing(active) {
+  state.isPostProcessing = active;
+  els.postSpinner.hidden = !active;
+  els.postRunLabel.textContent = active ? 'Working…' : 'Run AI finish';
+  els.postCancelBtn.hidden = !active;
+  els.postTask.disabled = active;
+  els.reasoningEffort.disabled = active;
+  els.customInstruction.disabled = active;
+
+  els.enhancedEditor.readOnly = active;
+  els.transcriptEditor.readOnly = active;
+  els.enhancedEditor.placeholder = active ? 'Thinking…' : 'The AI-enhanced version will appear here.';
+
+  renderEnhanced();
+  updateActionAvailability();
+}
+
+function thinkingConfigFor(model, effort) {
+  const isPro = model.endsWith('pro');
+  const budgets = isPro
+    ? { low: 128, medium: 4096, high: 16384 }
+    : { low: 0, medium: 4096, high: 16384 };
+  return { thinkingBudget: budgets[effort] ?? 4096 };
+}
+
+async function runPostProcess() {
+  if (state.isPostProcessing) return;
+  if (!state.apiKey) { openKeyDialog(); toast('Add a Gemini API key first.', 'info'); return; }
+
+  syncEditors();
+  const source = els.transcriptEditor.value.trim() || state.transcript.trim();
+  if (!source) { toast('Transcribe something before running AI finish.', 'info'); return; }
+  if (source.length > 120000) {
+    toast('This transcript is too long for a single post-processing request. Trim it first.', 'warning', { duration: 8000 });
+    return;
+  }
+
+  const task = els.postTask.value;
+  let instruction = (POST_TASKS[task] || POST_TASKS.polish).instruction;
+  if (task === 'custom') {
+    instruction = els.customInstruction.value.trim();
+    if (!instruction) { toast('Enter a custom instruction first.', 'error'); els.customInstruction.focus(); return; }
+  }
+
+  const controller = new AbortController();
+  state.postAbort = controller;
+
+  state.enhanced = '';
+  setPostProcessing(true);
+  setActiveTab('enhanced');
+  renderEnhanced();
+
+  try {
+    const body = {
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{
+        role: 'user',
+        parts: [{ text: `TASK\n${instruction}\n\nTRANSCRIPT\n"""\n${source}\n"""` }]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 8192,
+        thinkingConfig: thinkingConfigFor(state.postModel, state.reasoningEffort)
+      }
+    };
+
+    const response = await fetch(
+      `${currentBaseUrl()}/models/${state.postModel}:streamGenerateContent?alt=sse`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': state.apiKey
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) throw await readApiError(response);
+    if (!response.body) throw new Error('Streaming is not supported by this browser or response.');
+
+    await consumeSSE(response.body, (delta) => {
+      state.enhanced += delta;
+      scheduleEnhancedRender();
+    });
+
+    state.enhanced = state.enhanced.trim();
+    if (!state.enhanced) throw new Error('The model returned an empty response. Try a different task or model.');
+
+    renderEnhanced();
+    toast('AI finish complete. Review before use.', 'success');
+    announce('AI finish complete');
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      toast('AI finish cancelled.', 'info');
+    } else {
+      const message = humanError(error);
+      toast(message, 'error', {
+        duration: 9000,
+        action: error?.status === 400 || error?.status === 401
+          ? { label: 'Update key', onClick: openKeyDialog }
+          : undefined
+      });
+      announce(message);
+    }
+  } finally {
+    if (state.postAbort === controller) state.postAbort = null;
+    setPostProcessing(false);
+  }
+}
+
+let enhancedRenderFrame = 0;
+function scheduleEnhancedRender() {
+  if (enhancedRenderFrame) return;
+  enhancedRenderFrame = requestAnimationFrame(() => {
+    enhancedRenderFrame = 0;
+    const nearBottom =
+      els.enhancedEditor.scrollHeight - els.enhancedEditor.scrollTop - els.enhancedEditor.clientHeight < 90;
+    els.enhancedEditor.value = state.enhanced;
+    els.enhancedEditor.hidden = false;
+    els.enhancedEmpty.hidden = true;
+    if (nearBottom) els.enhancedEditor.scrollTop = els.enhancedEditor.scrollHeight;
+    updateCounts();
+    updateActionAvailability();
+  });
+}
+
+function cancelPostProcess() { state.postAbort?.abort(); }
+
+/* --------------------------------------------------------------------------
+   17. SSE parsing (Gemini)
+   -------------------------------------------------------------------------- */
+async function consumeSSE(stream, onDelta) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+      for (const line of lines) processSseLine(line, onDelta);
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      for (const line of buffer.split(/\r?\n/)) processSseLine(line, onDelta);
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+}
+
+function processSseLine(line, onDelta) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) return;
+  const raw = trimmed.slice(5).trim();
+  if (!raw || raw === '[DONE]') return;
+
+  let json;
+  try { json = JSON.parse(raw); } catch { return; }
+
+  if (json?.error) {
+    throw new Error(json.error.message || 'The model returned an error.');
+  }
+
+  const parts = json?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return;
+
+  for (const part of parts) {
+    if (typeof part.text === 'string' && !part.thought) onDelta(part.text);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   18. Error handling
+   -------------------------------------------------------------------------- */
+async function readApiError(response) {
+  const status = response.status;
+  let detail = '';
+  let code = '';
+
+  try {
+    const raw = await response.text();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        detail = parsed?.error?.message || parsed?.message || '';
+        code = parsed?.error?.status || parsed?.status || '';
+      } catch {
+        detail = raw.slice(0, 300);
+      }
+    }
+  } catch { /* ignore */ }
+
+  const lowerDetail = detail.toLowerCase();
+  const isKeyError = status === 401
+    || lowerDetail.includes('api key')
+    || lowerDetail.includes('api_key')
+    || code === 'INVALID_ARGUMENT' && lowerDetail.includes('key')
+    || code === 'PERMISSION_DENIED';
+
+  let message;
+  if (isKeyError) {
+    message = 'Your Google AI Studio key was rejected. Check the key and try again.';
+  } else if (status === 400) {
+    message = detail || 'The request was malformed, or the audio format is unsupported.';
+  } else if (status === 403) {
+    message = 'This key does not have access to the requested model. Check quotas and permissions.';
+  } else if (status === 404) {
+    message = 'The API endpoint or model was not found. Check Advanced → API base URL.';
+  } else if (status === 413) {
+    message = 'The audio file is too large for a single request. Try a smaller clip.';
+  } else if (status === 429) {
+    const retryAfter = response.headers.get('retry-after');
+    message = `Rate limit or quota reached.${retryAfter ? ` Retry in ${retryAfter}s.` : ' Wait a moment and retry.'} Free-tier limits vary by model.`;
+  } else if (status === 500) {
+    message = 'Gemini had a server error. Please retry.';
+  } else if (status === 502 || status === 503) {
+    message = 'Gemini is temporarily unavailable. Please retry shortly.';
+  } else {
+    message = detail || `Request failed with status ${status}.`;
+  }
+
+  const error = new Error(message);
+  error.status = status;
+  error.detail = detail;
+  return error;
+}
+
+function humanError(error) {
+  if (error?.name === 'AbortError') return 'Request cancelled.';
+  if (error instanceof TypeError) {
+    return 'Could not reach Gemini. This is often a CORS restriction or a network problem. Serve the page over HTTPS/localhost, or configure a trusted proxy in Advanced options.';
+  }
+  return error?.message || 'Something went wrong. Please try again.';
+}
+
+/* --------------------------------------------------------------------------
+   19. Event wiring
+   -------------------------------------------------------------------------- */
+function bindEvents() {
+  els.themeToggle.addEventListener('click', () => {
+    setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  });
+
+  els.keyTrigger.addEventListener('click', openKeyDialog);
+  els.keyCardBtn.addEventListener('click', openKeyDialog);
+  els.keyDialogClose.addEventListener('click', () => els.keyDialog.close());
+  els.keyForm.addEventListener('submit', saveKey);
+  els.removeKeyBtn.addEventListener('click', removeKey);
+
+  els.toggleKeyVisibility.addEventListener('click', () => {
+    const show = els.keyInput.type === 'password';
+    els.keyInput.type = show ? 'text' : 'password';
+    els.toggleKeyVisibility.textContent = show ? 'Hide' : 'Show';
+    els.toggleKeyVisibility.setAttribute('aria-pressed', String(show));
+    els.keyInput.focus();
+  });
+
+  els.keyDialog.addEventListener('click', (event) => {
+    if (event.target === els.keyDialog) els.keyDialog.close();
+  });
+
+  els.dropzone.addEventListener('click', () => els.fileInput.click());
+  els.dropzone.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      els.fileInput.click();
+    }
+  });
+
+  els.fileInput.addEventListener('change', () => {
+    const file = els.fileInput.files?.[0];
+    if (file) handleFile(file);
+    els.fileInput.value = '';
+  });
+
+  let dragDepth = 0;
+  els.dropzone.addEventListener('dragenter', (event) => {
+    event.preventDefault();
+    dragDepth += 1;
+    els.dropzone.classList.add('is-dragover');
+  });
+  els.dropzone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  els.dropzone.addEventListener('dragleave', (event) => {
+    event.preventDefault();
+    dragDepth -= 1;
+    if (dragDepth <= 0) { dragDepth = 0; els.dropzone.classList.remove('is-dragover'); }
+  });
+  els.dropzone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dragDepth = 0;
+    els.dropzone.classList.remove('is-dragover');
+    const file = event.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  });
+
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('drop', (event) => event.preventDefault());
+
+  els.fileRemove.addEventListener('click', clearFile);
+
+  els.audioPreview.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(els.audioPreview.duration)) {
+      state.fileDuration = els.audioPreview.duration;
+      if (state.file) {
+        const extension = (state.file.name.split('.').pop() || 'audio').toUpperCase();
+        els.fileMeta.textContent = `${formatBytes(state.file.size)} · ${extension} · ${formatClock(state.fileDuration)}`;
+      }
+    }
+  });
+
+  els.recordBtn.addEventListener('click', () => {
+    if (state.isRecording) stopRecording();
+    else startRecording();
+  });
+  els.stopBtn.addEventListener('click', stopRecording);
+
+  els.promptInput.addEventListener('input', () => {
+    els.promptCount.textContent = String(els.promptInput.value.length);
+  });
+
+  els.baseUrlInput.addEventListener('change', () => {
+    const value = els.baseUrlInput.value.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(value)) {
+      toast('API base must start with http:// or https://.', 'error');
+      els.baseUrlInput.value = state.baseUrl;
+      return;
+    }
+    state.baseUrl = value;
+    els.baseUrlInput.value = value;
+    savePreferences();
+    toast('API base URL updated.', 'success', { duration: 2600 });
+  });
+
+  els.baseUrlReset.addEventListener('click', () => {
+    state.baseUrl = GEMINI_DEFAULT_BASE;
+    els.baseUrlInput.value = GEMINI_DEFAULT_BASE;
+    savePreferences();
+    toast('API base reset to Gemini.', 'info', { duration: 2600 });
+  });
+
+  els.transcribeBtn.addEventListener('click', transcribe);
+  els.cancelTranscribeBtn.addEventListener('click', cancelTranscription);
+
+  els.tabTranscript.addEventListener('click', () => setActiveTab('transcript'));
+  els.tabEnhanced.addEventListener('click', () => setActiveTab('enhanced'));
+
+  [els.tabTranscript, els.tabEnhanced].forEach((tab) => {
+    tab.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const next = state.activeTab === 'transcript' ? 'enhanced' : 'transcript';
+        setActiveTab(next);
+        (next === 'transcript' ? els.tabTranscript : els.tabEnhanced).focus();
+      }
+    });
+  });
+
+  els.transcriptEditor.addEventListener('input', () => {
+    state.transcript = els.transcriptEditor.value;
+    updateCounts();
+    updateActionAvailability();
+  });
+
+  els.enhancedEditor.addEventListener('input', () => {
+    state.enhanced = els.enhancedEditor.value;
+    updateCounts();
+    updateActionAvailability();
+    els.tabEnhancedDot.hidden = !state.enhanced.trim();
+  });
+
+  els.copyBtn.addEventListener('click', copyActive);
+  els.downloadBtn.addEventListener('click', downloadActive);
+  els.downloadSrtBtn.addEventListener('click', downloadSrt);
+  els.clearBtn.addEventListener('click', clearAll);
+
+  els.postTask.addEventListener('change', () => {
+    const isCustom = els.postTask.value === 'custom';
+    els.customInstructionWrap.hidden = !isCustom;
+    if (isCustom) window.setTimeout(() => els.customInstruction.focus(), 30);
+  });
+
+  els.reasoningEffort.addEventListener('change', () => {
+    state.reasoningEffort = els.reasoningEffort.value;
+    savePreferences();
+  });
+
+  els.postRunBtn.addEventListener('click', runPostProcess);
+  els.postCancelBtn.addEventListener('click', cancelPostProcess);
+
+  document.addEventListener('keydown', (event) => {
+    const modifier = event.metaKey || event.ctrlKey;
+    if (modifier && event.key === 'Enter') {
+      event.preventDefault();
+      if (!state.isTranscribing && !state.isRecording) transcribe();
+    }
+    if (event.key === 'Escape') {
+      if (state.isRecording) { event.preventDefault(); stopRecording(); }
+      if (langUI.open) closeLanguageMenu();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    cleanupAudioGraph();
+    if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+  });
+}
+
+/* --------------------------------------------------------------------------
+   20. Init
+   -------------------------------------------------------------------------- */
+function init() {
+  initTheme();
+  loadPreferences();
+  loadKey();
+
+  els.baseUrlInput.value = state.baseUrl;
+  els.reasoningEffort.value = state.reasoningEffort;
+
+  setupSegmented(els.transcriptionModelControl, state.transcriptionModel, (value) => {
+    state.transcriptionModel = value;
+    updateTranscriptionModelUI();
+    savePreferences();
+  });
+  setupSegmented(els.postModelControl, state.postModel, (value) => {
+    state.postModel = value;
+    updatePostModelUI();
+    savePreferences();
+  });
+
+  updateTranscriptionModelUI();
+  updatePostModelUI();
+  updateKeyUI();
+
+  initLanguageCombo();
+  initWaveform();
+  bindEvents();
+
+  renderTranscript();
+  renderEnhanced();
+  renderSegments();
+  updateMeta();
+  updateCounts();
+  updateActionAvailability();
+  updateRecordingUI();
+
+  if (!state.apiKey) {
+    window.setTimeout(() => { if (!state.apiKey) els.keyCard.classList.add('needs-key'); }, 1400);
+  }
+}
+
+init();
+</script>
+</body>
+  </html>
