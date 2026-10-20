@@ -5,16 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark light" />
 <meta name="theme-color" content="#07080c" />
-<title>Scribe v0.2 — Gemini transcription studio</title>
+<title>Scribe v0.2.1 — Gemini transcription studio</title>
 <meta name="description" content="A fast, elegant, client-side speech-to-text studio powered by Google AI Studio (Gemini), with AI post-processing." />
 
 <!--
   ╔══════════════════════════════════════════════════════════════════════════╗
-  ║  SCRIBE v0.2 — Gemini speech studio                                       ║
+  ║  SCRIBE v0.2.1 — Gemini speech studio                                     ║
   ║                                                                          ║
   ║  HOW TO USE                                                              ║
   ║  1. Get a free Google AI Studio key:                                      ║
   ║       https://aistudio.google.com/apikey                                  ║
+  ║     New keys look like "AQ.Ab8…"; older ones look like "AIza…". Both work.║
   ║  2. Open this page over HTTPS or localhost (the mic needs a secure        ║
   ║     context; file:// may disable recording).                              ║
   ║  3. Paste the key, upload/record audio, pick models and language, then    ║
@@ -1010,7 +1011,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <div class="hero-copy reveal">
       <div class="eyebrow">
         <span class="eyebrow-dot" aria-hidden="true"></span>
-        Speech to text · Gemini API · v0.2
+        Speech to text · Gemini API · v0.2.1
       </div>
       <h1 id="heroTitle">Every word,<br><em>beautifully</em> transcribed.</h1>
       <p class="lede">
@@ -1352,7 +1353,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
   <p>
     Built for the <a href="https://ai.google.dev/gemini-api/docs" target="_blank" rel="noopener noreferrer">Gemini API</a>.
     Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>.
-    <span class="version-badge">v0.2</span>
+    <span class="version-badge">v0.2.1</span>
   </p>
   <p class="footer-muted">Client-side only · No analytics · Your key stays in this tab.</p>
 </footer>
@@ -1377,7 +1378,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
 
     <label for="keyInput">Google AI Studio API key</label>
     <div class="key-input-wrap">
-      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIza..." />
+      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIza... or AQ.Ab8..." />
       <button id="toggleKeyVisibility" type="button" aria-pressed="false">Show</button>
     </div>
 
@@ -1392,6 +1393,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
     <p class="dialog-note">
       When remembered, the key is stored in <code>sessionStorage</code> and cleared when the tab closes.
       It is never logged, never sent anywhere except Google, and never written to <code>localStorage</code>.
+      New keys look like <code>AQ.Ab8…</code>; legacy keys look like <code>AIza…</code>. Both are accepted.
     </p>
 
     <div class="dialog-actions">
@@ -1406,7 +1408,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
 
 <script type="module">
 /* ==========================================================================
-   Scribe v0.2 — single-file Gemini transcription studio
+   Scribe v0.2.1 — single-file Gemini transcription studio
    Vanilla JS. No build step. No external frameworks.
    ========================================================================== */
 
@@ -1416,7 +1418,7 @@ dialog[open] { animation: dialogIn 0.22s var(--ease); }
 const GEMINI_DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const FILES_UPLOAD_BASE = 'https://generativelanguage.googleapis.com/upload/v1beta';
 const KEY_STORAGE = 'scribe.gemini.key';
-const PREFS_STORAGE = 'scribe.prefs.v02';
+const PREFS_STORAGE = 'scribe.prefs.v021';
 const THEME_STORAGE = 'scribe.theme';
 
 const INLINE_MAX_BYTES = 12 * 1024 * 1024;      // inline base64 threshold
@@ -1429,7 +1431,6 @@ const EFFORT_LEVELS = ['low', 'medium', 'high'];
 
 const SUPPORTED_EXTENSIONS = ['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'wav', 'aiff', 'aif', 'webm'];
 
-// Gemini audio-supported languages (aligned with Whisper’s list, plus Gemini extras).
 const LANGUAGES = [
   { code: 'af', name: 'Afrikaans' }, { code: 'sq', name: 'Albanian' }, { code: 'am', name: 'Amharic' },
   { code: 'ar', name: 'Arabic' }, { code: 'hy', name: 'Armenian' }, { code: 'as', name: 'Assamese' },
@@ -1876,8 +1877,16 @@ function saveKey(event) {
     return;
   }
 
-  if (!value.startsWith('AIza') || value.length < 30) {
-    toast('That does not look like a Google AI Studio key. Keys start with “AIza”.', 'warning');
+  // Google issues two key shapes in the wild:
+  //   • legacy "AIzaSy..." (39 chars, alphanum + - _)
+  //   • newer AI Studio "AQ.Ab8..." (>=20 chars, dots, alphanum + - _)
+  // Anything else plausible is forwarded — Google will return a 401 if wrong.
+  const isClassicKey   = /^AIza[0-9A-Za-z\-_]{20,}$/.test(value);
+  const isNewStyleKey  = /^AQ\.[0-9A-Za-z\-_.]{20,}$/.test(value);
+  const isPlausibleKey = value.length >= 20 && !/\s/.test(value);
+
+  if (!isClassicKey && !isNewStyleKey && !isPlausibleKey) {
+    toast('That does not look like a Google AI Studio API key. Keys look like “AIza…” or “AQ.Ab8…”.', 'warning');
     els.keyInput.focus();
     return;
   }
@@ -3125,7 +3134,7 @@ async function readApiError(response) {
   const isKeyError = status === 401
     || lowerDetail.includes('api key')
     || lowerDetail.includes('api_key')
-    || code === 'INVALID_ARGUMENT' && lowerDetail.includes('key')
+    || (code === 'INVALID_ARGUMENT' && lowerDetail.includes('key'))
     || code === 'PERMISSION_DENIED';
 
   let message;
@@ -3385,4 +3394,4 @@ function init() {
 init();
 </script>
 </body>
-  </html>
+        </html>
